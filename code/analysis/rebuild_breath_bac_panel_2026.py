@@ -1,0 +1,894 @@
+from __future__ import annotations
+
+import math
+import re
+import sys
+import unicodedata
+from dataclasses import dataclass
+from difflib import SequenceMatcher
+from pathlib import Path
+
+import matplotlib
+import numpy as np
+import pandas as pd
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "2026" / "code" / "analysis"))
+
+from rebuild_breath_bac_panel_2019 import clean_and_panelize, first_nonempty  # noqa: E402
+
+
+OLD_RAW_PATH = ROOT / "breath_panel_2019_rebuild" / "standardized_breath_raw_1995_2019.parquet"
+NEW_XLSX_PATH = ROOT / "2026" / "breathtests" / "R006001-040926_DB_REDACTED.xlsx"
+
+OUT_DIR = ROOT / "breath_panel_2026_update"
+TABLE_DIR = OUT_DIR / "tables"
+FIG_DIR = OUT_DIR / "figures"
+OUT_RAW = OUT_DIR / "standardized_breath_raw_1995_2026_dedup.parquet"
+OUT_PANEL_PARQUET = OUT_DIR / "breath_panel_1995_2026.parquet"
+OUT_PANEL_CSV = OUT_DIR / "breath_panel_1995_2026.csv.gz"
+OUT_MD = OUT_DIR / "breath_panel_2026_update.md"
+
+FOLLOWUP_DAYS = 1462
+ADULT_MIN_BAC = 0.03
+YOUTH_MIN_BAC = 0.0
+MAX_BAC = 0.20
+
+STANDARD_RAW_COLUMNS = [
+    "source",
+    "source_extract",
+    "source_record_id",
+    "serial_no",
+    "event_date",
+    "event_time",
+    "observation_start_time",
+    "pbt_time",
+    "test1_blow_time",
+    "test1_end_time",
+    "test2_blow_time",
+    "test2_end_time",
+    "citation",
+    "operator",
+    "agency",
+    "subject_name",
+    "dob",
+    "sex",
+    "ethnic_group",
+    "license",
+    "county",
+    "crime",
+    "accident",
+    "location",
+    "pbt_result",
+    "alcohol1char",
+    "alcohol1",
+    "alcohol2char",
+    "alcohol2",
+]
+
+PLOT_BLUE = "#1f4e79"
+PLOT_GOLD = "#b7791f"
+PLOT_TEXT = "#222222"
+
+
+@dataclass
+class ParsedName:
+    last: str
+    first: str
+    middle: str
+
+    @property
+    def first_initial(self) -> str:
+        return self.first[:1]
+
+    @property
+    def middle_initial(self) -> str:
+        return self.middle[:1]
+
+
+class UnionFind:
+    def __init__(self, values: list[int]) -> None:
+        self.parent = {v: v for v in values}
+
+    def find(self, value: int) -> int:
+        parent = self.parent[value]
+        if parent != value:
+            self.parent[value] = self.find(parent)
+        return self.parent[value]
+
+    def union(self, left: int, right: int) -> None:
+        root_left = self.find(left)
+        root_right = self.find(right)
+        if root_left == root_right:
+            return
+        if root_right < root_left:
+            root_left, root_right = root_right, root_left
+        self.parent[root_right] = root_left
+
+
+def normalize_text(value: object) -> str:
+    text = "" if pd.isna(value) else str(value)
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.upper().strip()
+    text = re.sub(r"[^A-Z0-9 ]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def normalize_name_token(value: object) -> str:
+    return re.sub(r"[^A-Z]", "", normalize_text(value))
+
+
+def normalize_license(value: object) -> str:
+    return re.sub(r"[^A-Z0-9]", "", normalize_text(value))
+
+
+def normalize_key_part(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, pd.Timestamp):
+        return value.strftime("%Y-%m-%d")
+    return normalize_text(value)
+
+
+def parse_subject_name(value: object) -> ParsedName:
+    raw = "" if pd.isna(value) else str(value).strip()
+    raw = raw.replace(",", "/")
+    parts = [normalize_name_token(part) for part in raw.split("/") if normalize_name_token(part)]
+    last = parts[0] if parts else ""
+    first = parts[1] if len(parts) > 1 else ""
+    middle = parts[2] if len(parts) > 2 else ""
+    return ParsedName(last=last, first=first, middle=middle)
+
+
+def build_name(last: pd.Series, first: pd.Series, middle: pd.Series) -> pd.Series:
+    last_s = last.fillna("").astype(str).str.strip().str.upper()
+    first_s = first.fillna("").astype(str).str.strip().str.upper()
+    middle_s = middle.fillna("").astype(str).str.strip().str.upper()
+    full = last_s
+    full = np.where(first_s.ne(""), full + "/" + first_s, full)
+    full = np.where(middle_s.ne(""), full + "/" + middle_s.str[:1], full)
+    return pd.Series(full, index=last.index)
+
+
+def standardize_time_value_fast(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, pd.Timestamp):
+        return value.strftime("%H:%M:%S")
+    text = str(value).strip()
+    if not text or text.lower() == "nan" or text == ":":
+        return ""
+    match = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", text)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        seconds = int(match.group(3) or 0)
+        if 0 <= hours <= 23 and 0 <= minutes <= 59 and 0 <= seconds <= 59:
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    parsed = pd.to_datetime(text, errors="coerce")
+    if not pd.isna(parsed):
+        return parsed.strftime("%H:%M:%S")
+    return ""
+
+
+def standardize_time_series_fast(series: pd.Series) -> pd.Series:
+    return series.map(standardize_time_value_fast)
+
+
+def time_to_seconds(value: object) -> float:
+    text = standardize_time_value_fast(value)
+    if not text:
+        return np.nan
+    hours, minutes, seconds = text.split(":")
+    return float(int(hours) * 3600 + int(minutes) * 60 + int(seconds))
+
+
+def add_missing_standard_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    for col in STANDARD_RAW_COLUMNS:
+        if col not in out.columns:
+            out[col] = ""
+    return out[STANDARD_RAW_COLUMNS].copy()
+
+
+def read_old_standardized_raw() -> pd.DataFrame:
+    frame = pd.read_parquet(OLD_RAW_PATH)
+    frame["source_extract"] = "2019_archive"
+    frame["source_record_id"] = ""
+    return add_missing_standard_columns(frame)
+
+
+def read_new_datamaster() -> pd.DataFrame:
+    cols = [
+        "SerialNo",
+        "BACDatamasterID",
+        "Date",
+        "Time",
+        "Obs Time",
+        "Citation",
+        "Operator",
+        "Agency",
+        "SubjectName",
+        "DOB",
+        "Sex",
+        "EthnicGroup",
+        "License",
+        "County",
+        "crime",
+        "Accident",
+        "Location",
+        "PBTTime",
+        "PBTResult",
+        "Alcohol1char",
+        "Alcohol1",
+        "Alcohol2char",
+        "Alcohol2",
+        "Time of Alc1",
+        "Time of Alc2",
+    ]
+    frame = pd.read_excel(NEW_XLSX_PATH, sheet_name="DataMaster", usecols=cols)
+    out = pd.DataFrame(
+        {
+            "source": "datamaster",
+            "source_extract": "2026_drop",
+            "source_record_id": frame["BACDatamasterID"].fillna("").astype(str),
+            "serial_no": frame["SerialNo"].fillna("").astype(str),
+            "event_date": pd.to_datetime(frame["Date"], errors="coerce").dt.normalize(),
+            "event_time": standardize_time_series_fast(frame["Time"]),
+            "observation_start_time": standardize_time_series_fast(frame["Obs Time"]),
+            "pbt_time": standardize_time_series_fast(frame["PBTTime"]),
+            "test1_blow_time": standardize_time_series_fast(frame["Time of Alc1"]),
+            "test1_end_time": "",
+            "test2_blow_time": standardize_time_series_fast(frame["Time of Alc2"]),
+            "test2_end_time": "",
+            "citation": frame["Citation"].fillna("").astype(str),
+            "operator": frame["Operator"].fillna("").astype(str),
+            "agency": frame["Agency"].fillna("").astype(str),
+            "subject_name": frame["SubjectName"].fillna("").astype(str),
+            "dob": pd.to_datetime(frame["DOB"], errors="coerce").dt.normalize(),
+            "sex": frame["Sex"].fillna("").astype(str).str.upper().str[:1],
+            "ethnic_group": frame["EthnicGroup"].fillna("").astype(str).str.upper().str[:1],
+            "license": frame["License"].fillna("").astype(str),
+            "county": pd.to_numeric(frame["County"], errors="coerce"),
+            "crime": pd.to_numeric(frame["crime"], errors="coerce"),
+            "accident": frame["Accident"].fillna("").astype(str).str.upper().str[:1],
+            "location": frame["Location"].fillna("").astype(str),
+            "pbt_result": pd.to_numeric(frame["PBTResult"], errors="coerce"),
+            "alcohol1char": frame["Alcohol1char"].fillna("").astype(str),
+            "alcohol1": pd.to_numeric(frame["Alcohol1"], errors="coerce").round(),
+            "alcohol2char": frame["Alcohol2char"].fillna("").astype(str),
+            "alcohol2": pd.to_numeric(frame["Alcohol2"], errors="coerce").round(),
+        }
+    )
+    return add_missing_standard_columns(out)
+
+
+def read_new_draeger() -> pd.DataFrame:
+    cols = [
+        "SerialNo",
+        "BreathTestID",
+        "Date",
+        "Obs Time",
+        "PBT Time",
+        "PBT Result",
+        "Citation#",
+        "Co",
+        "Cr",
+        "Acc",
+        "Drnk Loc",
+        "OperatorName",
+        "Agency",
+        "SubjectLastName",
+        "SubjectFirstName",
+        "SubjectMI",
+        "SubjDOB",
+        "Race",
+        "Gender",
+        "BrAC1 IR",
+        "BrAC1 EC",
+        "B1 Tm",
+        "BrAC2 IR",
+        "BrAC2 EC",
+        "B2 Tm",
+    ]
+    frame = pd.read_excel(NEW_XLSX_PATH, sheet_name="DraegerBT", usecols=cols)
+    subject_name = build_name(frame["SubjectLastName"], frame["SubjectFirstName"], frame["SubjectMI"])
+    out = pd.DataFrame(
+        {
+            "source": "draeger",
+            "source_extract": "2026_drop",
+            "source_record_id": frame["BreathTestID"].fillna("").astype(str),
+            "serial_no": frame["SerialNo"].fillna("").astype(str),
+            "event_date": pd.to_datetime(frame["Date"], errors="coerce").dt.normalize(),
+            "event_time": standardize_time_series_fast(frame["Date"]),
+            "observation_start_time": standardize_time_series_fast(frame["Obs Time"]),
+            "pbt_time": standardize_time_series_fast(frame["PBT Time"]),
+            "test1_blow_time": standardize_time_series_fast(frame["B1 Tm"]),
+            "test1_end_time": "",
+            "test2_blow_time": standardize_time_series_fast(frame["B2 Tm"]),
+            "test2_end_time": "",
+            "citation": frame["Citation#"].fillna("").astype(str),
+            "operator": frame["OperatorName"].fillna("").astype(str),
+            "agency": frame["Agency"].fillna("").astype(str),
+            "subject_name": subject_name.fillna("").astype(str),
+            "dob": pd.to_datetime(frame["SubjDOB"], errors="coerce").dt.normalize(),
+            "sex": frame["Gender"].fillna("").astype(str).str.upper().str[:1],
+            "ethnic_group": frame["Race"].fillna("").astype(str).str.upper().str[:1],
+            "license": "",
+            "county": pd.to_numeric(frame["Co"], errors="coerce"),
+            "crime": pd.to_numeric(frame["Cr"], errors="coerce"),
+            "accident": frame["Acc"].fillna("").astype(str).str.upper().str[:1],
+            "location": frame["Drnk Loc"].fillna("").astype(str),
+            "pbt_result": pd.to_numeric(frame["PBT Result"], errors="coerce"),
+            "alcohol1char": "",
+            "alcohol1": pd.to_numeric(frame["BrAC1 IR"].where(frame["BrAC1 IR"].notna(), frame["BrAC1 EC"]), errors="coerce").mul(1000).round(),
+            "alcohol2char": "",
+            "alcohol2": pd.to_numeric(frame["BrAC2 IR"].where(frame["BrAC2 IR"].notna(), frame["BrAC2 EC"]), errors="coerce").mul(1000).round(),
+        }
+    )
+    return add_missing_standard_columns(out)
+
+
+def row_key(frame: pd.DataFrame, cols: list[str]) -> pd.Series:
+    pieces = []
+    for col in cols:
+        if col in {"event_date", "dob"}:
+            pieces.append(pd.to_datetime(frame[col], errors="coerce").dt.strftime("%Y-%m-%d").fillna(""))
+        elif col in {"alcohol1", "alcohol2", "county", "crime"}:
+            pieces.append(pd.to_numeric(frame[col], errors="coerce").round(3).astype("Int64").astype(str).replace("<NA>", ""))
+        else:
+            pieces.append(frame[col].map(normalize_key_part))
+    out = pieces[0]
+    for piece in pieces[1:]:
+        out = out + "|" + piece
+    return out
+
+
+def dedupe_raw(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    frame = raw.copy()
+    frame["subject_norm"] = frame["subject_name"].map(normalize_text)
+    frame["citation_norm"] = frame["citation"].map(normalize_text)
+    frame["license_norm"] = frame["license"].map(normalize_license)
+    frame["low_score_raw"] = frame[["alcohol1", "alcohol2"]].min(axis=1, skipna=True)
+    frame["time_sort_seconds"] = frame[["event_time", "test1_blow_time", "test2_blow_time"]].apply(
+        lambda col: col.map(time_to_seconds)
+    ).max(axis=1, skipna=True)
+    frame["source_priority"] = np.where(frame["source_extract"].eq("2026_drop"), 0, 1)
+
+    all_cols = [c for c in STANDARD_RAW_COLUMNS if c not in {"source_extract", "source_record_id"}]
+    frame["exact_key"] = row_key(frame, all_cols)
+    frame["instrument_event_key"] = row_key(
+        frame,
+        [
+            "source",
+            "serial_no",
+            "event_date",
+            "event_time",
+            "citation",
+            "subject_name",
+            "dob",
+            "alcohol1",
+            "alcohol2",
+        ],
+    )
+    frame["citation_event_key"] = row_key(
+        frame,
+        ["source", "event_date", "citation", "subject_name", "dob", "alcohol1", "alcohol2"],
+    )
+    frame["person_time_event_key"] = row_key(
+        frame,
+        ["source", "event_date", "event_time", "subject_name", "dob", "alcohol1", "alcohol2"],
+    )
+
+    sort_cols = ["source_priority", "source_extract", "source", "event_date", "time_sort_seconds"]
+    frame = frame.sort_values(sort_cols, ascending=[True, True, True, True, True]).copy()
+    frame["dup_exact"] = frame.duplicated("exact_key", keep="first")
+    frame["drop_reason"] = ""
+    frame.loc[frame["dup_exact"], "drop_reason"] = "exact_duplicate"
+
+    active = frame["drop_reason"].eq("")
+    frame.loc[active, "dup_instrument_event"] = frame.loc[active].duplicated("instrument_event_key", keep="first")
+    frame.loc[active & frame["dup_instrument_event"].fillna(False), "drop_reason"] = "instrument_event_duplicate"
+
+    active = frame["drop_reason"].eq("") & frame["citation_norm"].ne("")
+    frame.loc[active, "dup_citation_event"] = frame.loc[active].duplicated("citation_event_key", keep="first")
+    frame.loc[active & frame["dup_citation_event"].fillna(False), "drop_reason"] = "citation_event_duplicate"
+
+    active = frame["drop_reason"].eq("") & frame["event_time"].fillna("").astype(str).ne("")
+    frame.loc[active, "dup_person_time_event"] = frame.loc[active].duplicated("person_time_event_key", keep="first")
+    frame.loc[active & frame["dup_person_time_event"].fillna(False), "drop_reason"] = "person_time_event_duplicate"
+
+    deduped = frame.loc[frame["drop_reason"].eq(""), STANDARD_RAW_COLUMNS].copy()
+    audit = pd.DataFrame(
+        [
+            {"metric": "input_rows", "value": len(raw)},
+            {"metric": "dropped_exact_duplicates", "value": int(frame["drop_reason"].eq("exact_duplicate").sum())},
+            {
+                "metric": "dropped_instrument_event_duplicates",
+                "value": int(frame["drop_reason"].eq("instrument_event_duplicate").sum()),
+            },
+            {"metric": "dropped_citation_event_duplicates", "value": int(frame["drop_reason"].eq("citation_event_duplicate").sum())},
+            {
+                "metric": "dropped_person_time_event_duplicates",
+                "value": int(frame["drop_reason"].eq("person_time_event_duplicate").sum()),
+            },
+            {"metric": "deduped_rows", "value": len(deduped)},
+        ]
+    )
+    return deduped.reset_index(drop=True), audit
+
+
+def prepare_raw_descriptive_observations(raw: pd.DataFrame) -> pd.DataFrame:
+    frame = raw.copy()
+    frame["event_date"] = pd.to_datetime(frame["event_date"], errors="coerce").dt.normalize()
+    frame["dob"] = pd.to_datetime(frame["dob"], errors="coerce").dt.normalize()
+    frame["low_score"] = frame[["alcohol1", "alcohol2"]].min(axis=1, skipna=True)
+    frame = frame[frame["event_date"].notna()].copy()
+    frame["year"] = frame["event_date"].dt.year
+    frame["dow"] = pd.Categorical(
+        frame["event_date"].dt.day_name(),
+        categories=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        ordered=True,
+    )
+    frame["day_of_month"] = frame["event_date"].dt.day
+    seconds = frame[["event_time", "test1_blow_time", "test2_blow_time", "observation_start_time"]].apply(
+        lambda col: col.map(time_to_seconds)
+    ).max(axis=1, skipna=True)
+    frame["hour"] = np.floor(seconds / 3600).where(seconds.notna(), np.nan)
+    frame["age_at_event"] = (frame["event_date"] - frame["dob"]).dt.days / 365.25
+    frame["date_21"] = frame["dob"] + pd.DateOffset(years=21)
+    frame["days_to_21"] = (frame["event_date"] - frame["date_21"]).dt.days
+    return frame
+
+
+def add_person_identifiers(panel: pd.DataFrame) -> pd.DataFrame:
+    frame = panel.copy()
+    parsed = frame["SubjectName"].map(parse_subject_name)
+    frame["last_name_norm"] = [p.last for p in parsed]
+    frame["first_name_norm"] = [p.first for p in parsed]
+    frame["middle_initial"] = [p.middle_initial for p in parsed]
+    frame["first_initial"] = [p.first_initial for p in parsed]
+    frame["dob"] = pd.to_datetime(frame["dob"], errors="coerce").dt.normalize()
+    frame["license_norm"] = frame["License"].map(normalize_license)
+    dob_str = frame["dob"].dt.strftime("%Y-%m-%d").fillna("")
+    frame["person_key_5l_fmi_dob"] = (
+        frame["last_name_norm"].str[:5]
+        + "|"
+        + frame["first_initial"]
+        + "|"
+        + frame["middle_initial"].fillna("")
+        + "|"
+        + dob_str
+    )
+    frame["person_key_5l_fi_dob"] = frame["last_name_norm"].str[:5] + "|" + frame["first_initial"] + "|" + dob_str
+
+    people = (
+        frame[
+            [
+                "person_key_5l_fmi_dob",
+                "person_key_5l_fi_dob",
+                "last_name_norm",
+                "first_name_norm",
+                "first_initial",
+                "middle_initial",
+                "dob",
+                "license_norm",
+            ]
+        ]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    people["person_row"] = np.arange(len(people))
+    uf = UnionFind(people["person_row"].tolist())
+
+    exact_groups = people.groupby("person_key_5l_fi_dob", sort=False)["person_row"].apply(list)
+    for rows in exact_groups:
+        if len(rows) > 1:
+            root = rows[0]
+            for other in rows[1:]:
+                uf.union(int(root), int(other))
+
+    license_groups = people.loc[people["license_norm"].ne(""), :].groupby(["dob", "license_norm"], sort=False)["person_row"].apply(list)
+    for rows in license_groups:
+        if len(rows) > 1:
+            root = rows[0]
+            for other in rows[1:]:
+                uf.union(int(root), int(other))
+
+    for _, sub in people.groupby(["dob", "first_initial"], dropna=False, sort=False):
+        if len(sub) < 2 or len(sub) > 350:
+            continue
+        records = sub.to_dict("records")
+        for i, left in enumerate(records):
+            for right in records[i + 1 :]:
+                if not left["last_name_norm"] or not right["last_name_norm"]:
+                    continue
+                middle_ok = (
+                    not left["middle_initial"]
+                    or not right["middle_initial"]
+                    or left["middle_initial"] == right["middle_initial"]
+                )
+                last_ratio = SequenceMatcher(None, left["last_name_norm"], right["last_name_norm"]).ratio()
+                first_ratio = SequenceMatcher(None, left["first_name_norm"], right["first_name_norm"]).ratio()
+                same_prefix = left["last_name_norm"][:5] == right["last_name_norm"][:5]
+                if middle_ok and ((last_ratio >= 0.90 and first_ratio >= 0.88) or (same_prefix and first_ratio >= 0.86)):
+                    uf.union(int(left["person_row"]), int(right["person_row"]))
+
+    people["prob_root"] = people["person_row"].map(lambda v: uf.find(int(v)))
+    people["person_id_prob"] = pd.factorize(people["prob_root"], sort=True)[0] + 1
+    people["fuzzy_cluster_size"] = people.groupby("person_id_prob")["person_row"].transform("size")
+    frame = frame.merge(
+        people[["person_key_5l_fmi_dob", "person_key_5l_fi_dob", "person_id_prob", "fuzzy_cluster_size"]].drop_duplicates(),
+        on=["person_key_5l_fmi_dob", "person_key_5l_fi_dob"],
+        how="left",
+    )
+    return frame
+
+
+def recompute_repeat_outcomes(panel: pd.DataFrame) -> pd.DataFrame:
+    frame = panel.copy()
+    frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce").dt.normalize()
+    frame["low_score"] = pd.to_numeric(frame["low_score"], errors="coerce")
+    frame = frame.sort_values(["person_id_prob", "Date", "SerialNo", "Citation"]).copy()
+    frame["offense_prob"] = frame.groupby("person_id_prob").cumcount() + 1
+    frame["total_dui_prob"] = frame.groupby("person_id_prob")["offense_prob"].transform("max") - 1
+    frame["next_breath_date_prob"] = frame.groupby("person_id_prob")["Date"].shift(-1)
+    frame["next_breath_bac_prob"] = frame.groupby("person_id_prob")["low_score"].shift(-1)
+    days_next = (frame["next_breath_date_prob"] - frame["Date"]).dt.days
+    frame["days_to_next_breath_prob"] = days_next
+    frame["recidivism_4y_prob"] = ((days_next > 0) & (days_next <= FOLLOWUP_DAYS)).astype(int)
+    frame["low_bac"] = frame["low_score"] / 1000
+    frame["low_bac_bin"] = pd.to_numeric(frame["low_score_mod"], errors="coerce") / 1000
+    frame["age_at_event"] = (frame["Date"] - pd.to_datetime(frame["dob"], errors="coerce")).dt.days / 365.25
+    return frame
+
+
+def cluster_ols(y: np.ndarray, x: np.ndarray, clusters: np.ndarray) -> dict[str, object]:
+    xtx_inv = np.linalg.pinv(x.T @ x)
+    beta = xtx_inv @ (x.T @ y)
+    resid = y - x @ beta
+    unique_clusters = pd.unique(clusters)
+    meat = np.zeros((x.shape[1], x.shape[1]), dtype=float)
+    for cluster in unique_clusters:
+        mask = clusters == cluster
+        xg = x[mask]
+        ug = resid[mask]
+        xugu = xg.T @ ug
+        meat += np.outer(xugu, xugu)
+    n = len(y)
+    k = x.shape[1]
+    g = len(unique_clusters)
+    correction = 1.0
+    if g > 1 and n > k:
+        correction = (g / (g - 1)) * ((n - 1) / (n - k))
+    vcov = correction * (xtx_inv @ meat @ xtx_inv)
+    se = np.sqrt(np.clip(np.diag(vcov), 0, None))
+    return {"beta": beta, "se": se, "n": n, "clusters": g}
+
+
+def run_threshold_rd(sample: pd.DataFrame, population: str, cohort: str, threshold_score: int, bandwidth: int) -> dict[str, object]:
+    sub = sample[(sample["low_score"] - threshold_score).abs() < bandwidth].copy()
+    if len(sub) < 25:
+        return {
+            "population": population,
+            "cohort": cohort,
+            "threshold_bac": threshold_score / 1000,
+            "bandwidth_bac": bandwidth / 1000,
+            "n": len(sub),
+            "clusters": sub["low_score"].nunique(),
+            "coef": np.nan,
+            "se": np.nan,
+            "p_value": np.nan,
+            "mean_below": np.nan,
+            "mean_above": np.nan,
+        }
+    running = sub["low_score"].to_numpy(dtype=float) - threshold_score
+    treat = (sub["low_score"].to_numpy(dtype=float) >= threshold_score).astype(float)
+    x = np.column_stack([np.ones(len(sub)), treat, running, treat * running])
+    y = sub["recidivism_4y_prob"].to_numpy(dtype=float)
+    fit = cluster_ols(y, x, running)
+    coef = float(fit["beta"][1])
+    se = float(fit["se"][1])
+    z = coef / se if se > 0 else np.nan
+    p_value = math.erfc(abs(z) / math.sqrt(2)) if not np.isnan(z) else np.nan
+    below = sub.loc[sub["low_score"] == threshold_score - 1, "recidivism_4y_prob"].mean()
+    above = sub.loc[sub["low_score"] == threshold_score, "recidivism_4y_prob"].mean()
+    return {
+        "population": population,
+        "cohort": cohort,
+        "threshold_bac": threshold_score / 1000,
+        "bandwidth_bac": bandwidth / 1000,
+        "n": int(fit["n"]),
+        "clusters": int(fit["clusters"]),
+        "coef": coef,
+        "se": se,
+        "p_value": p_value,
+        "mean_below": below,
+        "mean_above": above,
+    }
+
+
+def make_analysis_samples(panel: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    max_date = panel["Date"].max()
+    full_followup_cutoff = max_date - pd.Timedelta(days=FOLLOWUP_DAYS)
+    base = panel[
+        panel["Date"].notna()
+        & panel["dob"].notna()
+        & panel["low_bac"].notna()
+        & panel["crime"].isin([1, 3])
+        & panel["Date"].le(full_followup_cutoff)
+    ].copy()
+
+    samples: dict[str, pd.DataFrame] = {}
+    for label, start, end in [
+        ("1999_2008", pd.Timestamp("1999-01-01"), pd.Timestamp("2008-12-31")),
+        ("1999_2022_full4y", pd.Timestamp("1999-01-01"), min(pd.Timestamp("2022-12-31"), full_followup_cutoff)),
+    ]:
+        cohort = base[base["Date"].between(start, end, inclusive="both")].copy()
+        adult = cohort[
+            cohort["age_at_event"].ge(21)
+            & cohort["crime"].eq(1)
+            & cohort["low_bac"].between(ADULT_MIN_BAC, MAX_BAC, inclusive="both")
+        ].copy()
+        youth = cohort[
+            cohort["age_at_event"].ge(18)
+            & cohort["age_at_event"].lt(21)
+            & cohort["crime"].isin([1, 3])
+            & cohort["low_bac"].between(YOUTH_MIN_BAC, MAX_BAC, inclusive="both")
+        ].copy()
+        samples[f"adult_{label}"] = adult
+        samples[f"youth_{label}"] = youth
+    return samples
+
+
+def build_rd_outputs(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    samples = make_analysis_samples(panel)
+    rd_rows = []
+    bin_rows = []
+    settings = [
+        ("adult", "1999_2008", 80, 51),
+        ("adult", "1999_2022_full4y", 80, 51),
+        ("youth", "1999_2008", 20, 20),
+        ("youth", "1999_2022_full4y", 20, 20),
+    ]
+    for population, cohort, threshold, bandwidth in settings:
+        sample = samples[f"{population}_{cohort}"]
+        rd_rows.append(run_threshold_rd(sample, population, cohort, threshold, bandwidth))
+        binned = (
+            sample.groupby("low_bac_bin", as_index=False)
+            .agg(n=("Date", "size"), recid_rate=("recidivism_4y_prob", "mean"))
+            .rename(columns={"low_bac_bin": "bac_bin"})
+        )
+        binned["population"] = population
+        binned["cohort"] = cohort
+        binned["threshold_bac"] = threshold / 1000
+        bin_rows.append(binned)
+    return pd.DataFrame(rd_rows), pd.concat(bin_rows, ignore_index=True)
+
+
+def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    desc = prepare_raw_descriptive_observations(raw)
+    daily = desc.groupby("event_date", as_index=False).size().rename(columns={"size": "tests"})
+    daily["tests_28d_ma"] = daily["tests"].rolling(28, min_periods=1, center=True).mean()
+    dow = desc.groupby("dow", observed=False, as_index=False).size().rename(columns={"size": "tests"})
+    dom = desc.groupby("day_of_month", as_index=False).size().rename(columns={"size": "tests"})
+    hour = desc.dropna(subset=["hour"]).groupby("hour", as_index=False).size().rename(columns={"size": "tests"})
+    around21 = desc[desc["days_to_21"].between(-730, 730, inclusive="both")].copy()
+    around21["days_to_21_bin"] = np.floor(around21["days_to_21"] / 30) * 30
+    age21 = around21.groupby("days_to_21_bin", as_index=False).size().rename(columns={"size": "tests"})
+
+    person_summary = pd.DataFrame(
+        [
+            {"metric": "person_day_events", "value": len(panel)},
+            {"metric": "strict_5l_fmi_dob_ids", "value": panel["person_key_5l_fmi_dob"].nunique()},
+            {"metric": "probabilistic_person_ids", "value": panel["person_id_prob"].nunique()},
+            {"metric": "events_in_fuzzy_clusters_size_gt1", "value": int(panel["fuzzy_cluster_size"].gt(1).sum())},
+            {"metric": "max_event_date", "value": panel["Date"].max().date().isoformat()},
+            {"metric": "full_4y_index_cutoff", "value": (panel["Date"].max() - pd.Timedelta(days=FOLLOWUP_DAYS)).date().isoformat()},
+        ]
+    )
+
+    outputs = {
+        "daily_tests": daily,
+        "tests_by_day_of_week": dow,
+        "tests_by_day_of_month": dom,
+        "tests_by_hour": hour,
+        "tests_relative_to_21": age21,
+        "person_identifier_summary": person_summary,
+    }
+    for name, frame in outputs.items():
+        frame.to_csv(TABLE_DIR / f"{name}.csv", index=False)
+    return outputs
+
+
+def clean_axes(ax: plt.Axes) -> None:
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", color="#d9d9d9", linewidth=0.8)
+    ax.set_axisbelow(True)
+    ax.tick_params(colors=PLOT_TEXT)
+    ax.title.set_color(PLOT_TEXT)
+
+
+def plot_descriptives(tables: dict[str, pd.DataFrame]) -> None:
+    daily = tables["daily_tests"]
+    fig, ax = plt.subplots(figsize=(13, 4.8))
+    ax.plot(daily["event_date"], daily["tests"], color="#b8c7d9", linewidth=0.5, label="Daily")
+    ax.plot(daily["event_date"], daily["tests_28d_ma"], color=PLOT_BLUE, linewidth=1.7, label="28-day moving average")
+    ax.set_title("Breath Tests by Date")
+    ax.set_ylabel("Tests")
+    ax.legend(frameon=False, loc="upper left")
+    clean_axes(ax)
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "daily_tests_1995_2026.svg", bbox_inches="tight")
+    plt.close(fig)
+
+    dow = tables["tests_by_day_of_week"]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar(dow["dow"].astype(str), dow["tests"], color=PLOT_BLUE)
+    ax.set_title("Breath Tests by Day of Week")
+    ax.set_ylabel("Tests")
+    ax.tick_params(axis="x", rotation=35)
+    clean_axes(ax)
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "tests_by_day_of_week.svg", bbox_inches="tight")
+    plt.close(fig)
+
+    dom = tables["tests_by_day_of_month"]
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    ax.bar(dom["day_of_month"], dom["tests"], color=PLOT_BLUE)
+    ax.set_title("Breath Tests by Day of Month")
+    ax.set_xlabel("Day of month")
+    ax.set_ylabel("Tests")
+    clean_axes(ax)
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "tests_by_day_of_month.svg", bbox_inches="tight")
+    plt.close(fig)
+
+    hour = tables["tests_by_hour"]
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    ax.bar(hour["hour"], hour["tests"], color=PLOT_BLUE)
+    ax.set_title("Breath Tests by Hour of Day")
+    ax.set_xlabel("Hour")
+    ax.set_ylabel("Tests")
+    ax.set_xticks(range(0, 24, 2))
+    clean_axes(ax)
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "tests_by_hour.svg", bbox_inches="tight")
+    plt.close(fig)
+
+    age21 = tables["tests_relative_to_21"]
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    ax.bar(age21["days_to_21_bin"], age21["tests"], width=26, color=PLOT_GOLD)
+    ax.axvline(0, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+    ax.set_title("Breath Tests Relative to Turning 21")
+    ax.set_xlabel("Days from 21st birthday, 30-day bins")
+    ax.set_ylabel("Tests")
+    clean_axes(ax)
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "tests_relative_to_turning_21.svg", bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_threshold_figures(binned: pd.DataFrame) -> None:
+    for population, threshold in [("adult", 0.08), ("youth", 0.02)]:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), sharey=True)
+        for ax, cohort in zip(axes, ["1999_2008", "1999_2022_full4y"]):
+            sub = binned[(binned["population"].eq(population)) & (binned["cohort"].eq(cohort))].copy()
+            if population == "adult":
+                sub = sub[sub["bac_bin"].between(0.03, 0.16, inclusive="both")]
+                ax.set_xlim(0.03, 0.16)
+            else:
+                sub = sub[sub["bac_bin"].between(0.0, 0.08, inclusive="both")]
+                ax.set_xlim(0.0, 0.08)
+            ax.scatter(sub["bac_bin"], sub["recid_rate"] * 100, s=np.clip(sub["n"], 15, 150), facecolors="none", edgecolors=PLOT_BLUE)
+            ax.axvline(threshold, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+            ax.set_title(cohort.replace("_full4y", " full 4y").replace("_", "-"))
+            ax.set_xlabel("BAC")
+            clean_axes(ax)
+        axes[0].set_ylabel("Repeat breath test within 4 years (%)")
+        fig.suptitle(f"{population.title()} BAC Threshold and Repeat Testing", y=1.02)
+        fig.tight_layout()
+        fig.savefig(FIG_DIR / f"{population}_threshold_recidivism.svg", bbox_inches="tight")
+        plt.close(fig)
+
+
+def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFrame) -> None:
+    audit = raw_audit.set_index("metric")["value"].to_dict()
+    max_date = pd.to_datetime(panel["Date"], errors="coerce").max()
+    cutoff = max_date - pd.Timedelta(days=FOLLOWUP_DAYS)
+    rd_display = rd.copy()
+    for col in ["coef", "se", "p_value", "mean_below", "mean_above"]:
+        rd_display[col] = pd.to_numeric(rd_display[col], errors="coerce").map(lambda x: "" if pd.isna(x) else f"{x:.4f}")
+    rd_display["n"] = pd.to_numeric(rd_display["n"], errors="coerce").astype("Int64").astype(str)
+
+    md = [
+        "# Breath panel update through 2026",
+        "",
+        "This package imports the new `R006001-040926_DB_REDACTED.xlsx` breath-test workbook, combines it with the previously standardized 1995-2019 extract, removes duplicate raw observations, rebuilds the person-day breath panel, and creates first-pass descriptives and repeat-offending threshold checks.",
+        "",
+        "## Duplicate audit",
+        "",
+        f"- Raw rows before de-duplication: `{int(audit['input_rows']):,}`.",
+        f"- Exact duplicates dropped: `{int(audit['dropped_exact_duplicates']):,}`.",
+        f"- Instrument/date/time/citation/name duplicates dropped: `{int(audit['dropped_instrument_event_duplicates']):,}`.",
+        f"- Citation-event duplicates dropped: `{int(audit['dropped_citation_event_duplicates']):,}`.",
+        f"- Person-time-event duplicates dropped: `{int(audit['dropped_person_time_event_duplicates']):,}`.",
+        f"- Raw rows retained for descriptives/panel building: `{int(audit['deduped_rows']):,}`.",
+        "",
+        "## Person panel",
+        "",
+        f"- Person-day events in rebuilt panel: `{len(panel):,}`.",
+        f"- Event dates run through `{max_date.date().isoformat()}`; full 4-year follow-up index events run through `{cutoff.date().isoformat()}`.",
+        "- The requested deterministic identifier is `person_key_5l_fmi_dob`: first five letters of last name, first initial, middle initial, and DOB.",
+        "- `person_id_prob` additionally links records with the same DOB and first initial when last/first names are highly similar, or when nonblank license numbers match.",
+        "",
+        "## Threshold checks",
+        "",
+        rd_display.to_markdown(index=False),
+        "",
+        "## Files",
+        "",
+        f"- `standardized_breath_raw_1995_2026_dedup.parquet`",
+        f"- `breath_panel_1995_2026.parquet`",
+        f"- `breath_panel_1995_2026.csv.gz`",
+        f"- `tables/raw_duplicate_audit.csv`",
+        f"- `tables/threshold_recidivism_rd.csv`",
+        f"- `figures/daily_tests_1995_2026.svg`",
+        f"- `figures/tests_by_day_of_week.svg`",
+        f"- `figures/tests_by_day_of_month.svg`",
+        f"- `figures/tests_by_hour.svg`",
+        f"- `figures/tests_relative_to_turning_21.svg`",
+        f"- `figures/adult_threshold_recidivism.svg`",
+        f"- `figures/youth_threshold_recidivism.svg`",
+    ]
+    OUT_MD.write_text("\n".join(md) + "\n", encoding="utf-8")
+
+
+def main() -> None:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    TABLE_DIR.mkdir(parents=True, exist_ok=True)
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    old_raw = read_old_standardized_raw()
+    new_raw = pd.concat([read_new_datamaster(), read_new_draeger()], ignore_index=True)
+    raw = pd.concat([old_raw, new_raw], ignore_index=True)
+    raw_dedup, audit = dedupe_raw(raw)
+    audit.to_csv(TABLE_DIR / "raw_duplicate_audit.csv", index=False)
+    raw_dedup.to_parquet(OUT_RAW, index=False)
+
+    clean_and_panelize.__globals__["time_to_seconds"] = time_to_seconds
+    panel_input = raw_dedup[[c for c in STANDARD_RAW_COLUMNS if c not in {"source_extract", "source_record_id"}]].copy()
+    panel = clean_and_panelize(panel_input)
+    panel = add_person_identifiers(panel)
+    panel = recompute_repeat_outcomes(panel)
+    panel.to_parquet(OUT_PANEL_PARQUET, index=False)
+    panel.to_csv(OUT_PANEL_CSV, index=False, compression="gzip")
+
+    raw_source_years = (
+        raw_dedup.groupby(["source_extract", "source", raw_dedup["event_date"].dt.year], as_index=False)
+        .size()
+        .rename(columns={"event_date": "year", "size": "rows"})
+    )
+    raw_source_years.to_csv(TABLE_DIR / "source_years_after_dedup.csv", index=False)
+
+    tables = save_descriptive_tables(raw_dedup, panel)
+    plot_descriptives(tables)
+
+    rd, binned = build_rd_outputs(panel)
+    rd.to_csv(TABLE_DIR / "threshold_recidivism_rd.csv", index=False)
+    binned.to_csv(TABLE_DIR / "threshold_recidivism_binned.csv", index=False)
+    plot_threshold_figures(binned)
+    write_markdown(audit, panel, rd)
+
+    print(f"Wrote 2026 breath update package to {OUT_DIR}")
+
+
+if __name__ == "__main__":
+    main()

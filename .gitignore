@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+
+# Private/raw or heavyweight analysis data
+data/
+raw/
+intermediate/
+*.dta
+*.parquet
+*.feather
+*.sas7bdat
+*.rds
+*.zip
+*.xlsx
+*.xls
+
+# Local runtime files
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+

@@ -1,0 +1,7 @@
+metric,value
+input_rows,1085058
+dropped_exact_duplicates,137
+dropped_instrument_event_duplicates,38178
+dropped_citation_event_duplicates,26458
+dropped_person_time_event_duplicates,0
+deduped_rows,1020285
