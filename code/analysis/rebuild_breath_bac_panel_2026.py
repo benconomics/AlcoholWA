@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import math
 import re
 import sys
@@ -385,6 +386,14 @@ def dedupe_raw(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         frame,
         ["source", "event_date", "event_time", "subject_name", "dob", "alcohol1", "alcohol2"],
     )
+    # The 2019 archive keeps a full middle name and a placeholder license value,
+    # whereas the 2026 extract often has only a middle initial and no license.
+    # For Draeger records, instrument + date + exact time + DOB identifies the
+    # same test without relying on those extract-specific fields.
+    frame["instrument_person_time_key"] = row_key(
+        frame,
+        ["source", "serial_no", "event_date", "event_time", "dob"],
+    )
 
     sort_cols = ["source_priority", "source_extract", "source", "event_date", "time_sort_seconds"]
     frame = frame.sort_values(sort_cols, ascending=[True, True, True, True, True]).copy()
@@ -404,6 +413,20 @@ def dedupe_raw(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     frame.loc[active, "dup_person_time_event"] = frame.loc[active].duplicated("person_time_event_key", keep="first")
     frame.loc[active & frame["dup_person_time_event"].fillna(False), "drop_reason"] = "person_time_event_duplicate"
 
+    active = (
+        frame["drop_reason"].eq("")
+        & frame["source"].eq("draeger")
+        & frame["serial_no"].map(normalize_text).ne("")
+        & frame["event_time"].map(normalize_text).ne("")
+        & frame["dob"].notna()
+    )
+    frame.loc[active, "dup_instrument_person_time"] = frame.loc[active].duplicated(
+        "instrument_person_time_key", keep="first"
+    )
+    frame.loc[
+        active & frame["dup_instrument_person_time"].fillna(False), "drop_reason"
+    ] = "instrument_person_time_duplicate"
+
     deduped = frame.loc[frame["drop_reason"].eq(""), STANDARD_RAW_COLUMNS].copy()
     audit = pd.DataFrame(
         [
@@ -417,6 +440,10 @@ def dedupe_raw(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             {
                 "metric": "dropped_person_time_event_duplicates",
                 "value": int(frame["drop_reason"].eq("person_time_event_duplicate").sum()),
+            },
+            {
+                "metric": "dropped_instrument_person_time_duplicates",
+                "value": int(frame["drop_reason"].eq("instrument_person_time_duplicate").sum()),
             },
             {"metric": "deduped_rows", "value": len(deduped)},
         ]
@@ -851,7 +878,7 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
     OUT_MD.write_text("\n".join(md) + "\n", encoding="utf-8")
 
 
-def main() -> None:
+def main(raw_only: bool = False) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     TABLE_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -862,6 +889,10 @@ def main() -> None:
     raw_dedup, audit = dedupe_raw(raw)
     audit.to_csv(TABLE_DIR / "raw_duplicate_audit.csv", index=False)
     raw_dedup.to_parquet(OUT_RAW, index=False)
+
+    if raw_only:
+        print(f"Wrote de-duplicated raw breath records to {OUT_RAW}")
+        return
 
     clean_and_panelize.__globals__["time_to_seconds"] = time_to_seconds
     panel_input = raw_dedup[[c for c in STANDARD_RAW_COLUMNS if c not in {"source_extract", "source_record_id"}]].copy()
@@ -891,4 +922,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--raw-only",
+        action="store_true",
+        help="Rebuild only the de-duplicated raw extract and duplicate audit.",
+    )
+    args = parser.parse_args()
+    main(raw_only=args.raw_only)

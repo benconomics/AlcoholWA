@@ -28,8 +28,8 @@ source_extract,source,year,rows
 2019_archive,draeger,2015,7592
 2019_archive,draeger,2016,8839
 2019_archive,draeger,2017,12408
-2019_archive,draeger,2018,11097
-2019_archive,draeger,2019,1494
+2019_archive,draeger,2018,40
+2019_archive,draeger,2019,7
 2026_drop,datamaster,2018,548
 2026_drop,draeger,2018,26944
 2026_drop,draeger,2019,26368

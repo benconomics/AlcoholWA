@@ -16,8 +16,14 @@ files from the private Dropbox inputs.
 - Instrument/date/time/citation/name duplicates dropped: 38,178
 - Citation-event duplicates dropped: 26,458
 - Person-time-event duplicates dropped: 0
-- Raw observations retained after de-duplication: 1,020,285
+- Cross-extract Draeger instrument/date/time/DOB duplicates dropped: 12,544
+- Raw observations retained after de-duplication: 1,007,741
 - Retained observation dates run from 1995-11-17 through 2026-06-18
+
+The final cross-extract rule is necessary because the archive keeps full middle
+names and a placeholder license value while the updated extract commonly has a
+middle initial and no license. It is limited to Draeger observations with a
+nonmissing instrument, event time, and DOB.
 
 ## Included exhibits
 
@@ -36,4 +42,3 @@ files from the private Dropbox inputs.
   for aggregate exhibits from the cached de-duplicated raw parquet.
 - `results/breath_panel_2026_update/tables/`: aggregate CSV tables.
 - `results/breath_panel_2026_update/figures/`: SVG figures.
-
