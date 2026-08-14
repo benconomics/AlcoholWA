@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import itertools
-import math
 import re
 import sys
 import unicodedata
@@ -34,6 +32,8 @@ PRIVATE_DIR = OUT_DIR / "private"
 OUT_RAW = OUT_DIR / "standardized_breath_raw_1995_2026_dedup.parquet"
 OUT_PANEL_PARQUET = OUT_DIR / "breath_panel_1995_2026.parquet"
 OUT_PANEL_CSV = OUT_DIR / "breath_panel_1995_2026.csv.gz"
+STATA_INPUT_DIR = OUT_DIR / "stata_inputs"
+STATA_RD_INPUT = STATA_INPUT_DIR / "breath_panel_rd_input.dta"
 OUT_MD = OUT_DIR / "breath_panel_2026_update.md"
 
 FOLLOWUP_DAYS = 1462
@@ -691,71 +691,13 @@ def recompute_repeat_outcomes(panel: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def cluster_ols(y: np.ndarray, x: np.ndarray, clusters: np.ndarray) -> dict[str, object]:
-    xtx_inv = np.linalg.pinv(x.T @ x)
-    beta = xtx_inv @ (x.T @ y)
-    resid = y - x @ beta
-    unique_clusters = pd.unique(clusters)
-    meat = np.zeros((x.shape[1], x.shape[1]), dtype=float)
-    for cluster in unique_clusters:
-        mask = clusters == cluster
-        xg = x[mask]
-        ug = resid[mask]
-        xugu = xg.T @ ug
-        meat += np.outer(xugu, xugu)
-    n = len(y)
-    k = x.shape[1]
-    g = len(unique_clusters)
-    correction = 1.0
-    if g > 1 and n > k:
-        correction = (g / (g - 1)) * ((n - 1) / (n - k))
-    vcov = correction * (xtx_inv @ meat @ xtx_inv)
-    se = np.sqrt(np.clip(np.diag(vcov), 0, None))
-    return {"beta": beta, "se": se, "n": n, "clusters": g}
-
-
-def run_threshold_rd(sample: pd.DataFrame, population: str, cohort: str, threshold_score: int, bandwidth: int) -> dict[str, object]:
-    sub = sample[(sample["low_score"] - threshold_score).abs() <= bandwidth].copy()
-    if len(sub) < 25:
-        return {
-            "population": population,
-            "cohort": cohort,
-            "threshold_bac": threshold_score / 1000,
-            "bandwidth_bac": bandwidth / 1000,
-            "n": len(sub),
-            "clusters": sub["low_score"].nunique(),
-            "se_type": "Cluster-robust by integer BAC score",
-            "coef": np.nan,
-            "se": np.nan,
-            "p_value": np.nan,
-            "mean_below": np.nan,
-            "mean_above": np.nan,
-        }
-    running = sub["low_score"].to_numpy(dtype=float) - threshold_score
-    treat = (sub["low_score"].to_numpy(dtype=float) >= threshold_score).astype(float)
-    x = np.column_stack([np.ones(len(sub)), treat, running, treat * running])
-    y = sub["recidivism_4y_wa"].to_numpy(dtype=float)
-    fit = cluster_ols(y, x, running)
-    coef = float(fit["beta"][1])
-    se = float(fit["se"][1])
-    z = coef / se if se > 0 else np.nan
-    p_value = math.erfc(abs(z) / math.sqrt(2)) if not np.isnan(z) else np.nan
-    below = sub.loc[sub["low_score"] == threshold_score - 1, "recidivism_4y_wa"].mean()
-    above = sub.loc[sub["low_score"] == threshold_score, "recidivism_4y_wa"].mean()
-    return {
-        "population": population,
-        "cohort": cohort,
-        "threshold_bac": threshold_score / 1000,
-        "bandwidth_bac": bandwidth / 1000,
-        "n": int(fit["n"]),
-        "clusters": int(fit["clusters"]),
-        "se_type": "Cluster-robust by integer BAC score",
-        "coef": coef,
-        "se": se,
-        "p_value": p_value,
-        "mean_below": below,
-        "mean_above": above,
-    }
+def export_stata_rd_input(panel: pd.DataFrame) -> None:
+    STATA_INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    stata = panel[["Date", "low_score", "age_at_event", "crime", "recidivism_4y_wa"]].copy()
+    stata = stata.rename(columns={"Date": "event_date"})
+    stata["event_date"] = (pd.to_datetime(stata["event_date"]) - pd.Timestamp("1960-01-01")).dt.days.astype("Int32")
+    stata["recidivism_4y_wa"] = stata["recidivism_4y_wa"].astype("int8")
+    stata.to_stata(STATA_RD_INPUT, write_index=False, version=118)
 
 
 def make_analysis_samples(panel: pd.DataFrame) -> dict[str, pd.DataFrame]:
@@ -792,26 +734,22 @@ def make_analysis_samples(panel: pd.DataFrame) -> dict[str, pd.DataFrame]:
     return samples
 
 
-def build_rd_outputs(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def build_threshold_binned(panel: pd.DataFrame) -> pd.DataFrame:
     samples = make_analysis_samples(panel)
-    rd_rows = []
     bin_rows = []
     cohorts = ["1999_2008", "1999_2022_full4y", "2009_2022_full4y"]
-    thresholds = {"adult": [80, 150], "youth": [20, 80, 150]}
-    bandwidth = 50
-    for population, cohort in itertools.product(thresholds, cohorts):
-        sample = samples[f"{population}_{cohort}"]
-        for threshold in thresholds[population]:
-            rd_rows.append(run_threshold_rd(sample, population, cohort, threshold, bandwidth))
-        binned = (
-            sample.groupby("low_bac_bin", as_index=False)
-            .agg(n=("Date", "size"), recid_rate=("recidivism_4y_wa", "mean"))
-            .rename(columns={"low_bac_bin": "bac_bin"})
-        )
-        binned["population"] = population
-        binned["cohort"] = cohort
-        bin_rows.append(binned)
-    return pd.DataFrame(rd_rows), pd.concat(bin_rows, ignore_index=True)
+    for population in ["adult", "youth"]:
+        for cohort in cohorts:
+            sample = samples[f"{population}_{cohort}"]
+            binned = (
+                sample.groupby("low_bac_bin", as_index=False)
+                .agg(n=("Date", "size"), recid_rate=("recidivism_4y_wa", "mean"))
+                .rename(columns={"low_bac_bin": "bac_bin"})
+            )
+            binned["population"] = population
+            binned["cohort"] = cohort
+            bin_rows.append(binned)
+    return pd.concat(bin_rows, ignore_index=True)
 
 
 def build_age21_binned_tables(
@@ -1196,6 +1134,7 @@ def main(raw_only: bool = False, linkage_audit_only: bool = False, use_cached_ra
     panel = recompute_repeat_outcomes(panel)
     panel.to_parquet(OUT_PANEL_PARQUET, index=False)
     panel.to_csv(OUT_PANEL_CSV, index=False, compression="gzip")
+    export_stata_rd_input(panel)
 
     raw_source_years = (
         raw_dedup.groupby(["source_extract", "source", raw_dedup["event_date"].dt.year], as_index=False)
@@ -1207,14 +1146,12 @@ def main(raw_only: bool = False, linkage_audit_only: bool = False, use_cached_ra
     tables = save_descriptive_tables(raw_dedup, panel)
     plot_descriptives(tables)
 
-    rd, binned = build_rd_outputs(panel)
-    rd.to_csv(TABLE_DIR / "threshold_recidivism_rd.csv", index=False)
+    binned = build_threshold_binned(panel)
     binned.to_csv(TABLE_DIR / "threshold_recidivism_binned.csv", index=False)
     plot_threshold_figures(binned)
-    plot_rd_estimates(rd)
-    write_markdown(audit, panel, rd)
 
     print(f"Wrote 2026 breath update package to {OUT_DIR}")
+    print(f"Run Stata estimation with {ROOT / '2026' / 'code' / 'analysis' / 'estimate_breath_threshold_rd_stata19.do'}")
 
 
 if __name__ == "__main__":

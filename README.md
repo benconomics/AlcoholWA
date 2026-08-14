@@ -38,6 +38,21 @@ The completed person-day panel contains 857,608 events for 667,659 Washington
 person keys, with no duplicate person-day records. Four-year repeat-offense
 outcomes are complete for index tests through 2022-06-17.
 
+## Estimation Workflow
+
+Python imports, de-duplicates, links, and prepares the person-day panel. The
+threshold RD regressions are estimated in Stata 19, not Python. After running
+the Python rebuild (or `code/analysis/export_breath_rd_stata_input.py`), run:
+
+```stata
+do "2026/code/analysis/estimate_breath_threshold_rd_stata19.do"
+```
+
+Then run `code/analysis/refresh_breath_rd_outputs.py` to redraw the RD
+coefficient figure and regenerate the Markdown/HTML brief from Stata's CSV
+output. The Stata input contains only event date, BAC score, age, crime code,
+and the four-year repeat indicator; it is local-only and excluded from GitHub.
+
 ## Included exhibits
 
 - Daily breath-test counts with a 28-day moving average
@@ -67,6 +82,10 @@ outcomes are complete for index tests through 2022-06-17.
 
 - `code/analysis/rebuild_breath_bac_panel_2026.py`: full import, de-duplication,
   person identifier, repeat-offending, and exhibit pipeline.
+- `code/analysis/estimate_breath_threshold_rd_stata19.do`: Stata 19 local-linear
+  RD estimation with integer-BAC clustered standard errors.
+- `code/analysis/refresh_breath_rd_outputs.py`: redraws the RD estimate figure
+  and brief from the Stata-produced table.
 - `code/analysis/breath_2026_descriptive_exhibits.py`: lightweight rerun script
   for aggregate exhibits from the cached de-duplicated raw parquet.
 - `results/breath_panel_2026_update/tables/`: aggregate CSV tables.

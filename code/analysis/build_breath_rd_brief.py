@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -70,7 +71,7 @@ def main() -> None:
     missing = required - observed
     if missing:
         raise ValueError(f"Missing requested RD estimates: {sorted(missing)}")
-    if not rd["bandwidth_bac"].eq(0.05).all():
+    if not np.isclose(rd["bandwidth_bac"], 0.05).all():
         raise ValueError("The brief requires an inclusive +/-0.05 BAC bandwidth.")
 
     adult_md, adult_html = estimate_table(rd, "adult", [0.08, 0.15])
