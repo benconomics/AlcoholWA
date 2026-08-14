@@ -88,6 +88,8 @@ and the four-year repeat indicator; it is local-only and excluded from GitHub.
   RD estimation with integer-BAC clustered standard errors.
 - `code/analysis/refresh_breath_rd_outputs.py`: redraws the RD estimate figure
   and brief from the Stata-produced table.
+- `code/analysis/build_adult_rd_social_figure.py`: creates the adult .08/.15
+  social-ready confidence-interval figure from the Stata estimates.
 - `code/analysis/estimate_age21_crash_rd_stata19.do`: Stata local-Poisson age-21
   crash-count models with robust delta-method percentage-jump estimates.
 - `code/analysis/breath_2026_descriptive_exhibits.py`: lightweight rerun script

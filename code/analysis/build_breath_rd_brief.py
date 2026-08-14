@@ -85,6 +85,10 @@ def main() -> None:
 - **At the adult .15 aggravated-DUI threshold, the estimated discontinuity is smaller but still negative across all three cohorts.**
 - **For drivers younger than 21, the .02 discontinuity is negative in the earlier and longer cohorts but is imprecise in the 2009-2022 cohort.** The .08 and .15 youth estimates are also imprecise.
 
+## Updated Adult Estimates
+
+![Adult threshold estimates, original and updated windows](figures/adult_threshold_rd_social.svg)
+
 ## BAC Distribution and Sorting Check
 
 The first exhibit plots the lower recorded BAC for ages 18 and older in crime codes 1 and 3 across the full observed BAC range. The upper panel includes exact-zero readings; the lower panel removes them so the score distribution near the legal thresholds is visible. The figure does not show an isolated point mass at .02, .08, or .15, but it should be interpreted alongside the coding audit below.
@@ -193,6 +197,10 @@ The source table is `tables/threshold_recidivism_rd.csv`.
         <li><strong>At the adult .15 aggravated-DUI threshold, the estimated discontinuity is smaller but still negative across all three cohorts.</strong></li>
         <li><strong>For drivers younger than 21, the .02 discontinuity is negative in the earlier and longer cohorts but is imprecise in the 2009-2022 cohort.</strong> The .08 and .15 youth estimates are also imprecise.</li>
       </ul>
+    </section>
+    <section aria-labelledby=\"updated-adult-heading\">
+      <h2 id=\"updated-adult-heading\">Updated Adult Estimates</h2>
+      <figure><img src=\"figures/adult_threshold_rd_social.svg\" alt=\"Adult Washington DUI threshold estimates in the original and updated sample windows, with 95 percent confidence intervals.\"><figcaption>Adult four-year repeat breath-test estimates at the .08 and .15 thresholds.</figcaption></figure>
     </section>
     <section aria-labelledby=\"distribution-heading\">
       <h2 id=\"distribution-heading\">BAC Distribution and Sorting Check</h2>
