@@ -770,6 +770,7 @@ def make_analysis_samples(panel: pd.DataFrame) -> dict[str, pd.DataFrame]:
     for label, start, end in [
         ("1999_2008", pd.Timestamp("1999-01-01"), pd.Timestamp("2008-12-31")),
         ("1999_2022_full4y", pd.Timestamp("1999-01-01"), min(pd.Timestamp("2022-12-31"), full_followup_cutoff)),
+        ("2009_2022_full4y", pd.Timestamp("2009-01-01"), min(pd.Timestamp("2022-12-31"), full_followup_cutoff)),
     ]:
         cohort = base[base["Date"].between(start, end, inclusive="both")].copy()
         adult = cohort[
@@ -795,6 +796,7 @@ def build_rd_outputs(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     settings = [
         ("adult", "1999_2008", 80, 51),
         ("adult", "1999_2022_full4y", 80, 51),
+        ("adult", "2009_2022_full4y", 80, 51),
         ("youth", "1999_2008", 20, 20),
         ("youth", "1999_2022_full4y", 20, 20),
     ]
@@ -922,21 +924,43 @@ def plot_threshold_figures(binned: pd.DataFrame) -> None:
         for ax, cohort in zip(axes, ["1999_2008", "1999_2022_full4y"]):
             sub = binned[(binned["population"].eq(population)) & (binned["cohort"].eq(cohort))].copy()
             if population == "adult":
-                sub = sub[sub["bac_bin"].between(0.03, 0.16, inclusive="both")]
-                ax.set_xlim(0.03, 0.16)
+                sub = sub[sub["bac_bin"].between(0.03, 0.20, inclusive="both")]
+                ax.set_xlim(0.03, 0.20)
             else:
                 sub = sub[sub["bac_bin"].between(0.0, 0.08, inclusive="both")]
                 ax.set_xlim(0.0, 0.08)
             ax.scatter(sub["bac_bin"], sub["recid_rate"] * 100, s=np.clip(sub["n"], 15, 150), facecolors="none", edgecolors=PLOT_BLUE)
-            ax.axvline(threshold, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+            ax.axvline(threshold, color=PLOT_TEXT, linestyle="--", linewidth=1.0, label=".08 DUI per se" if population == "adult" else ".02 youth threshold")
+            if population == "adult":
+                ax.axvline(0.15, color=PLOT_GOLD, linestyle=":", linewidth=1.3, label=".15 aggravated DUI")
             ax.set_title(cohort.replace("_full4y", " full 4y").replace("_", "-"))
             ax.set_xlabel("BAC")
             clean_axes(ax)
         axes[0].set_ylabel("Repeat breath test within 4 years (%)")
+        axes[0].legend(frameon=False, loc="upper right")
         fig.suptitle(f"{population.title()} BAC Threshold and Repeat Testing", y=1.02)
         fig.tight_layout()
         fig.savefig(FIG_DIR / f"{population}_threshold_recidivism.svg", bbox_inches="tight")
         plt.close(fig)
+
+    sub = binned[
+        binned["population"].eq("adult")
+        & binned["cohort"].eq("2009_2022_full4y")
+        & binned["bac_bin"].between(0.03, 0.20, inclusive="both")
+    ].copy()
+    fig, ax = plt.subplots(figsize=(7.6, 4.8))
+    ax.scatter(sub["bac_bin"], sub["recid_rate"] * 100, s=np.clip(sub["n"], 15, 150), facecolors="none", edgecolors=PLOT_BLUE)
+    ax.axvline(0.08, color=PLOT_TEXT, linestyle="--", linewidth=1.0, label=".08 DUI per se")
+    ax.axvline(0.15, color=PLOT_GOLD, linestyle=":", linewidth=1.3, label=".15 aggravated DUI")
+    ax.set_xlim(0.03, 0.20)
+    ax.set_title("Adult BAC and Repeat Testing, 2009-2022")
+    ax.set_xlabel("BAC")
+    ax.set_ylabel("Repeat breath test within 4 years (%)")
+    ax.legend(frameon=False, loc="upper right")
+    clean_axes(ax)
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "adult_threshold_recidivism_2009_2022.svg", bbox_inches="tight")
+    plt.close(fig)
 
 
 def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFrame) -> None:
