@@ -823,8 +823,13 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
     dom = desc.groupby("day_of_month", as_index=False).size().rename(columns={"size": "tests"})
     hour = desc.dropna(subset=["hour"]).groupby("hour", as_index=False).size().rename(columns={"size": "tests"})
     around21 = desc[desc["days_to_21"].between(-730, 730, inclusive="both")].copy()
-    around21["days_to_21_bin"] = np.floor(around21["days_to_21"] / 30) * 30
-    age21 = around21.groupby("days_to_21_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_daily = around21.groupby("days_to_21", as_index=False).size().rename(columns={"size": "tests"})
+    around21["days_to_21_week_bin"] = np.floor(around21["days_to_21"] / 7).astype(int) * 7
+    age21_weekly = around21.groupby("days_to_21_week_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_weekly["days_to_21"] = age21_weekly["days_to_21_week_bin"] + 3.5
+    around21["days_to_21_28day_bin"] = np.floor(around21["days_to_21"] / 28).astype(int) * 28
+    age21_28day = around21.groupby("days_to_21_28day_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_28day["days_to_21"] = age21_28day["days_to_21_28day_bin"] + 14
 
     person_summary = pd.DataFrame(
         [
@@ -841,7 +846,9 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
         "tests_by_day_of_week": dow,
         "tests_by_day_of_month": dom,
         "tests_by_hour": hour,
-        "tests_relative_to_21": age21,
+        "tests_relative_to_21_daily": age21_daily,
+        "tests_relative_to_21_weekly": age21_weekly,
+        "tests_relative_to_21_28day": age21_28day,
         "person_identifier_summary": person_summary,
     }
     for name, frame in outputs.items():
@@ -905,17 +912,23 @@ def plot_descriptives(tables: dict[str, pd.DataFrame]) -> None:
     fig.savefig(FIG_DIR / "tests_by_hour.svg", bbox_inches="tight")
     plt.close(fig)
 
-    age21 = tables["tests_relative_to_21"]
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.bar(age21["days_to_21_bin"], age21["tests"], width=26, color=PLOT_GOLD)
-    ax.axvline(0, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
-    ax.set_title("Breath Tests Relative to Turning 21")
-    ax.set_xlabel("Days from 21st birthday, 30-day bins")
-    ax.set_ylabel("Tests")
-    clean_axes(ax)
-    fig.tight_layout()
-    fig.savefig(FIG_DIR / "tests_relative_to_turning_21.svg", bbox_inches="tight")
-    plt.close(fig)
+    for table_name, label, filename, x_limits in [
+        ("tests_relative_to_21_daily", "Daily observations", "tests_relative_to_turning_21_daily.svg", (-730, 730)),
+        ("tests_relative_to_21_weekly", "7-day bins", "tests_relative_to_turning_21_weekly.svg", (-735, 735)),
+        ("tests_relative_to_21_28day", "28-day bins", "tests_relative_to_turning_21_28day.svg", (-756, 756)),
+    ]:
+        age21 = tables[table_name]
+        fig, ax = plt.subplots(figsize=(9.6, 4.6))
+        ax.scatter(age21["days_to_21"], age21["tests"], s=12, color=PLOT_BLUE)
+        ax.axvline(0, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+        ax.set_xlim(*x_limits)
+        ax.set_title(f"Breath-Test Observations Relative to Turning 21 ({label})")
+        ax.set_xlabel("Days from 21st birthday")
+        ax.set_ylabel("Observations")
+        clean_axes(ax)
+        fig.tight_layout()
+        fig.savefig(FIG_DIR / filename, bbox_inches="tight")
+        plt.close(fig)
 
 
 def plot_threshold_figures(binned: pd.DataFrame) -> None:
@@ -1014,7 +1027,9 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
         f"- `figures/tests_by_day_of_week.svg`",
         f"- `figures/tests_by_day_of_month.svg`",
         f"- `figures/tests_by_hour.svg`",
-        f"- `figures/tests_relative_to_turning_21.svg`",
+        f"- `figures/tests_relative_to_turning_21_daily.svg`",
+        f"- `figures/tests_relative_to_turning_21_weekly.svg`",
+        f"- `figures/tests_relative_to_turning_21_28day.svg`",
         f"- `figures/adult_threshold_recidivism.svg`",
         f"- `figures/youth_threshold_recidivism.svg`",
     ]

@@ -44,8 +44,13 @@ def build_tables(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
     dom = desc.groupby("day_of_month", as_index=False).size().rename(columns={"size": "tests"})
     hour = desc.dropna(subset=["hour"]).groupby("hour", as_index=False).size().rename(columns={"size": "tests"})
     around21 = desc[desc["days_to_21"].between(-730, 730, inclusive="both")].copy()
-    around21["days_to_21_bin"] = np.floor(around21["days_to_21"] / 30) * 30
-    age21 = around21.groupby("days_to_21_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_daily = around21.groupby("days_to_21", as_index=False).size().rename(columns={"size": "tests"})
+    around21["days_to_21_week_bin"] = np.floor(around21["days_to_21"] / 7).astype(int) * 7
+    age21_weekly = around21.groupby("days_to_21_week_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_weekly["days_to_21"] = age21_weekly["days_to_21_week_bin"] + 3.5
+    around21["days_to_21_28day_bin"] = np.floor(around21["days_to_21"] / 28).astype(int) * 28
+    age21_28day = around21.groupby("days_to_21_28day_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_28day["days_to_21"] = age21_28day["days_to_21_28day_bin"] + 14
     source_years = (
         raw.groupby(["source_extract", "source", raw["event_date"].dt.year], as_index=False)
         .size()
@@ -56,7 +61,9 @@ def build_tables(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
         "tests_by_day_of_week": dow,
         "tests_by_day_of_month": dom,
         "tests_by_hour": hour,
-        "tests_relative_to_21": age21,
+        "tests_relative_to_21_daily": age21_daily,
+        "tests_relative_to_21_weekly": age21_weekly,
+        "tests_relative_to_21_28day": age21_28day,
         "source_years_after_dedup": source_years,
     }
     for name, frame in outputs.items():
