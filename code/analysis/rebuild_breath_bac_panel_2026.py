@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import math
 import re
 import sys
@@ -714,7 +715,7 @@ def cluster_ols(y: np.ndarray, x: np.ndarray, clusters: np.ndarray) -> dict[str,
 
 
 def run_threshold_rd(sample: pd.DataFrame, population: str, cohort: str, threshold_score: int, bandwidth: int) -> dict[str, object]:
-    sub = sample[(sample["low_score"] - threshold_score).abs() < bandwidth].copy()
+    sub = sample[(sample["low_score"] - threshold_score).abs() <= bandwidth].copy()
     if len(sub) < 25:
         return {
             "population": population,
@@ -723,6 +724,7 @@ def run_threshold_rd(sample: pd.DataFrame, population: str, cohort: str, thresho
             "bandwidth_bac": bandwidth / 1000,
             "n": len(sub),
             "clusters": sub["low_score"].nunique(),
+            "se_type": "Cluster-robust by integer BAC score",
             "coef": np.nan,
             "se": np.nan,
             "p_value": np.nan,
@@ -747,6 +749,7 @@ def run_threshold_rd(sample: pd.DataFrame, population: str, cohort: str, thresho
         "bandwidth_bac": bandwidth / 1000,
         "n": int(fit["n"]),
         "clusters": int(fit["clusters"]),
+        "se_type": "Cluster-robust by integer BAC score",
         "coef": coef,
         "se": se,
         "p_value": p_value,
@@ -793,16 +796,13 @@ def build_rd_outputs(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     samples = make_analysis_samples(panel)
     rd_rows = []
     bin_rows = []
-    settings = [
-        ("adult", "1999_2008", 80, 51),
-        ("adult", "1999_2022_full4y", 80, 51),
-        ("adult", "2009_2022_full4y", 80, 51),
-        ("youth", "1999_2008", 20, 20),
-        ("youth", "1999_2022_full4y", 20, 20),
-    ]
-    for population, cohort, threshold, bandwidth in settings:
+    cohorts = ["1999_2008", "1999_2022_full4y", "2009_2022_full4y"]
+    thresholds = {"adult": [80, 150], "youth": [20, 80, 150]}
+    bandwidth = 50
+    for population, cohort in itertools.product(thresholds, cohorts):
         sample = samples[f"{population}_{cohort}"]
-        rd_rows.append(run_threshold_rd(sample, population, cohort, threshold, bandwidth))
+        for threshold in thresholds[population]:
+            rd_rows.append(run_threshold_rd(sample, population, cohort, threshold, bandwidth))
         binned = (
             sample.groupby("low_bac_bin", as_index=False)
             .agg(n=("Date", "size"), recid_rate=("recidivism_4y_wa", "mean"))
@@ -810,7 +810,6 @@ def build_rd_outputs(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         )
         binned["population"] = population
         binned["cohort"] = cohort
-        binned["threshold_bac"] = threshold / 1000
         bin_rows.append(binned)
     return pd.DataFrame(rd_rows), pd.concat(bin_rows, ignore_index=True)
 
@@ -1028,6 +1027,51 @@ def plot_threshold_figures(binned: pd.DataFrame) -> None:
     plt.close(fig)
 
 
+def plot_rd_estimates(rd: pd.DataFrame) -> None:
+    cohort_labels = {
+        "1999_2008": "1999-2008",
+        "1999_2022_full4y": "1999-2022",
+        "2009_2022_full4y": "2009-2022",
+    }
+    for population, thresholds in [("adult", [0.08, 0.15]), ("youth", [0.02, 0.08, 0.15])]:
+        sub = rd[rd["population"].eq(population)].copy()
+        sub["threshold_order"] = pd.Categorical(sub["threshold_bac"], thresholds, ordered=True)
+        sub["cohort_order"] = pd.Categorical(
+            sub["cohort"], ["1999_2008", "1999_2022_full4y", "2009_2022_full4y"], ordered=True
+        )
+        sub = sub.sort_values(["threshold_order", "cohort_order"], ascending=[False, True]).reset_index(drop=True)
+        y = np.arange(len(sub))
+        fig, ax = plt.subplots(figsize=(8.8, 4.0 if population == "adult" else 5.2))
+        ax.errorbar(
+            sub["coef"] * 100,
+            y,
+            xerr=1.96 * sub["se"] * 100,
+            fmt="o",
+            markersize=5.5,
+            capsize=3,
+            color=PLOT_BLUE,
+            ecolor=PLOT_BLUE,
+            linewidth=1.2,
+        )
+        ax.axvline(0, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+        ax.set_yticks(y, [f"BAC {threshold:.2f} | {cohort_labels[cohort]}" for threshold, cohort in zip(sub["threshold_bac"], sub["cohort"])])
+        ax.set_xlabel("Estimated discontinuity in 4-year repeat breath test (percentage points)")
+        ax.set_title(f"{population.title()} BAC Threshold RD Estimates")
+        ax.text(
+            0,
+            -0.18,
+            "Local-linear RD, inclusive +/-0.05 BAC bandwidth; 95% confidence intervals use cluster-robust SEs.",
+            transform=ax.transAxes,
+            color=PLOT_TEXT,
+            fontsize=8.5,
+            ha="left",
+        )
+        clean_axes(ax)
+        fig.tight_layout()
+        fig.savefig(FIG_DIR / f"{population}_threshold_rd_estimates_h0p05.svg", bbox_inches="tight")
+        plt.close(fig)
+
+
 def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFrame) -> None:
     audit = raw_audit.set_index("metric")["value"].to_dict()
     max_date = pd.to_datetime(panel["Date"], errors="coerce").max()
@@ -1087,6 +1131,8 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
         f"- `figures/tests_relative_to_turning_21_july_2014_to_present_28day.svg`",
         f"- `figures/adult_threshold_recidivism.svg`",
         f"- `figures/youth_threshold_recidivism.svg`",
+        f"- `figures/adult_threshold_rd_estimates_h0p05.svg`",
+        f"- `figures/youth_threshold_rd_estimates_h0p05.svg`",
     ]
     OUT_MD.write_text("\n".join(md) + "\n", encoding="utf-8")
 
@@ -1137,6 +1183,7 @@ def main(raw_only: bool = False, linkage_audit_only: bool = False, use_cached_ra
     rd.to_csv(TABLE_DIR / "threshold_recidivism_rd.csv", index=False)
     binned.to_csv(TABLE_DIR / "threshold_recidivism_binned.csv", index=False)
     plot_threshold_figures(binned)
+    plot_rd_estimates(rd)
     write_markdown(audit, panel, rd)
 
     print(f"Wrote 2026 breath update package to {OUT_DIR}")

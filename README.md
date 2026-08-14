@@ -51,6 +51,12 @@ outcomes are complete for index tests through 2022-06-17.
 - BAC distribution with .02, .08, and .15 reference lines
 - Adult (.08) and youth (.02) BAC-threshold repeat-offense exhibits for the
   1999-2008 and 1999-2022 complete-follow-up cohorts
+- RD estimates of four-year repeat breath testing at adult .08/.15 and youth
+  .02/.08/.15 thresholds, for the 1999-2008, 1999-2022, and 2009-2022
+  cohorts, using an inclusive +/-0.05 BAC bandwidth and cluster-robust SEs
+- RD estimates of four-year repeat breath testing at adult .08/.15 and youth
+  .02/.08/.15 thresholds, for the 1999-2008, 1999-2022, and 2009-2022
+  cohorts, using an inclusive +/-0.05 BAC bandwidth and cluster-robust SEs
 
 ## Files
 
@@ -63,3 +69,7 @@ outcomes are complete for index tests through 2022-06-17.
 - `results/breath_panel_2026_update/washington_breath_test_trends.md` and
   `.html`: short exhibit brief covering aggregate trends, age 21, and the
   pre/post-July-2014 comparison.
+- `results/breath_panel_2026_update/breath_test_rd_brief.md` and `.html`:
+  breath-test figures and four-year recidivism RD estimates.
+- `results/breath_panel_2026_update/breath_test_rd_brief.md` and `.html`:
+  breath-test figures and four-year recidivism RD estimates.
