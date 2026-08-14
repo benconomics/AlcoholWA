@@ -6,6 +6,12 @@
 - **At the adult .15 aggravated-DUI threshold, the estimated discontinuity is smaller but still negative across all three cohorts.**
 - **For drivers younger than 21, the .02 discontinuity is negative in the earlier and longer cohorts but is imprecise in the 2009-2022 cohort.** The .08 and .15 youth estimates are also imprecise.
 
+## BAC Distribution and Sorting Check
+
+The first exhibit plots the lower recorded BAC for ages 18 and older in crime codes 1 and 3. The upper panel includes exact-zero readings; the lower panel removes them so the score distribution near the legal thresholds is visible. The figure does not show an isolated point mass at .02, .08, or .15, but it should be interpreted alongside the coding audit below.
+
+![BAC distribution with and without zero](figures/bac_distribution_with_without_zero.svg)
+
 ## Breath-Test Patterns
 
 The descriptive figures use de-duplicated Washington breath-test observations from 1995 through 2026.
@@ -15,6 +21,12 @@ The descriptive figures use de-duplicated Washington breath-test observations fr
 | By day of week | By day of month |
 | --- | --- |
 | ![Breath tests by day of week](figures/tests_by_day_of_week.svg) | ![Breath tests by day of month](figures/tests_by_day_of_month.svg) |
+
+## Youth Coding and Test-Platform Audit
+
+The youth analytic sample includes crime codes 1 and 3. Draeger accounts for 56.1% of youth observations in 2017, 98.1% in 2018, and essentially all observations from 2019 forward. Code 3's share falls from 21.1% in 2017 to 18.9% in 2018 and 15.8% in 2019: this is not an all-at-once recode, but the code mix is not time-invariant. Exact-zero lower BAC readings rise sharply for code 1 at the platform transition (2.9% in 2017, 9.1% in 2018, and 14.2% in 2019), while code 3 does not show the same spike. Post-2018 youth specifications should therefore be checked with and without exact-zero readings and by crime code.
+
+![Youth crime code and platform audit](figures/youth_crime_code_platform_audit.svg)
 
 ## RD Design
 

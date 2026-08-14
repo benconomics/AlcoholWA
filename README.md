@@ -49,6 +49,9 @@ outcomes are complete for index tests through 2022-06-17.
   July 2014-present; matching y-axis limits within each bin width facilitate
   descriptive comparisons across the legal-marijuana-sales break
 - BAC distribution with .02, .08, and .15 reference lines
+- BAC score distribution with exact-zero readings retained and removed, plus
+  score-level counts around the .02, .08, and .15 thresholds
+- Youth crime-code and Draeger-platform audit by year
 - Adult (.08) and youth (.02) BAC-threshold repeat-offense exhibits for the
   1999-2008 and 1999-2022 complete-follow-up cohorts
 - RD estimates of four-year repeat breath testing at adult .08/.15 and youth
@@ -71,5 +74,7 @@ outcomes are complete for index tests through 2022-06-17.
   pre/post-July-2014 comparison.
 - `results/breath_panel_2026_update/breath_test_rd_brief.md` and `.html`:
   breath-test figures and four-year recidivism RD estimates.
+- `code/analysis/build_breath_data_quality_audit.py`: regenerates the BAC
+  distribution and youth code/platform audit from the private raw panel.
 - `results/breath_panel_2026_update/breath_test_rd_brief.md` and `.html`:
   breath-test figures and four-year recidivism RD estimates.
