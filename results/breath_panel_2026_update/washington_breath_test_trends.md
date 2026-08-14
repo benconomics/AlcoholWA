@@ -26,6 +26,22 @@ Each plot places a test by the number of days from the tested person's 21st birt
 
 ![28-day observations relative to turning 21](figures/tests_relative_to_turning_21_28day.svg)
 
+## Age-21 Count Sensitivity
+
+The same age-21 count design is repeated after excluding zero BAC readings and then within tests with a recorded collision. These restrictions address the sharp rise in exact-zero BAC records over time and provide a smaller, potentially more consistently recorded comparison sample. Each plot uses its own vertical scale.
+
+### BAC > 0
+
+| Daily observations | 7-day bins | 28-day bins |
+| --- | --- | --- |
+| ![Daily positive-BAC observations relative to turning 21](figures/tests_relative_to_turning_21_bac_positive_daily.svg) | ![Weekly positive-BAC observations relative to turning 21](figures/tests_relative_to_turning_21_bac_positive_weekly.svg) | ![28-day positive-BAC observations relative to turning 21](figures/tests_relative_to_turning_21_bac_positive_28day.svg) |
+
+### Recorded collision
+
+| Daily observations | 7-day bins | 28-day bins |
+| --- | --- | --- |
+| ![Daily collision observations relative to turning 21](figures/tests_relative_to_turning_21_accident_daily.svg) | ![Weekly collision observations relative to turning 21](figures/tests_relative_to_turning_21_accident_weekly.svg) | ![28-day collision observations relative to turning 21](figures/tests_relative_to_turning_21_accident_28day.svg) |
+
 ## Age-21 Pattern Before and After Legal Cannabis Sales
 
 The pre-period runs from January 1999 through June 2014. The post-period begins in July 2014 and runs through the latest available record. Within each row, the two plots use the same y-axis scale. The age-21 jump persists in both periods, but is proportionally smaller after July 2014.

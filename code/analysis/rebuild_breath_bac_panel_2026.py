@@ -866,6 +866,12 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
         "tests_relative_to_21_28day": age21["28day"],
         "person_identifier_summary": person_summary,
     }
+    for sample, sample_desc in [
+        ("bac_positive", desc[desc["low_score"].gt(0)]),
+        ("accident", desc[desc["accident"].eq("Y")]),
+    ]:
+        for bin_width, frame in build_age21_binned_tables(sample_desc).items():
+            outputs[f"tests_relative_to_21_{sample}_{bin_width}"] = frame
     for period, start_date, end_date in [
         ("1999_to_june_2014", "1999-01-01", "2014-06-30"),
         ("july_2014_to_present", "2014-07-01", None),
@@ -950,6 +956,28 @@ def plot_descriptives(tables: dict[str, pd.DataFrame]) -> None:
         fig.tight_layout()
         fig.savefig(FIG_DIR / filename, bbox_inches="tight")
         plt.close(fig)
+
+    for sample, sample_label in [
+        ("bac_positive", "Breath-Test Observations with BAC > 0"),
+        ("accident", "Breath-Test Observations with a Recorded Collision"),
+    ]:
+        for bin_width, label, x_limits in [
+            ("daily", "Daily observations", (-730, 730)),
+            ("weekly", "7-day bins", (-728, 728)),
+            ("28day", "28-day bins", (-728, 728)),
+        ]:
+            age21 = tables[f"tests_relative_to_21_{sample}_{bin_width}"]
+            fig, ax = plt.subplots(figsize=(9.6, 4.6))
+            ax.scatter(age21["days_to_21"], age21["tests"], s=12, color=PLOT_BLUE)
+            ax.axvline(0, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+            ax.set_xlim(*x_limits)
+            ax.set_title(f"{sample_label} Relative to Turning 21 ({label})")
+            ax.set_xlabel("Days from 21st birthday")
+            ax.set_ylabel("Observations")
+            clean_axes(ax)
+            fig.tight_layout()
+            fig.savefig(FIG_DIR / f"tests_relative_to_turning_21_{sample}_{bin_width}.svg", bbox_inches="tight")
+            plt.close(fig)
 
     period_specs = [
         ("1999_to_june_2014", "1999-June 2014"),

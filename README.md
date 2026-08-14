@@ -45,6 +45,7 @@ outcomes are complete for index tests through 2022-06-17.
 - Breath tests by day of month
 - Breath tests by hour of day
 - Breath-test observations relative to turning 21: daily, 7-day, and 28-day scatterplots
+  for all tests, tests with BAC > 0, and tests with a recorded collision
 - Age-21 scatterplots using the same three bin widths for 1999-June 2014 and
   July 2014-present; matching y-axis limits within each bin width facilitate
   descriptive comparisons across the legal-marijuana-sales break
