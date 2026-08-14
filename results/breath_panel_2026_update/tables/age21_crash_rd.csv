@@ -1,0 +1,3 @@
+period,bandwidth_days,log_jump,log_jump_se,p_value,percent_jump,percent_jump_se,n_days
+1998_to_june_2014,90,.49148661,.10102101,1.1434578e-06,63.474464,16.514357,181
+july_2014_to_present,90,.2954973,.13816915,.032462951,34.379444,18.567095,181

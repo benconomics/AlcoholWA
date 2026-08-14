@@ -763,14 +763,27 @@ def build_age21_binned_tables(
     if end_date is not None:
         around21 = around21[around21["event_date"] <= pd.Timestamp(end_date)]
 
-    age21_daily = around21.groupby("days_to_21", as_index=False).size().rename(columns={"size": "tests"})
+    age21_daily = (
+        around21.groupby("days_to_21").size()
+        .reindex(np.arange(-730, 731), fill_value=0)
+        .rename_axis("days_to_21")
+        .reset_index(name="tests")
+    )
     around21["days_to_21_week_bin"] = np.floor(around21["days_to_21"] / 7).astype(int) * 7
-    age21_weekly = around21.groupby("days_to_21_week_bin", as_index=False).size().rename(columns={"size": "tests"})
-    age21_weekly = age21_weekly[age21_weekly["days_to_21_week_bin"].between(-728, 721, inclusive="both")].copy()
+    age21_weekly = (
+        around21.groupby("days_to_21_week_bin").size()
+        .reindex(np.arange(-728, 722, 7), fill_value=0)
+        .rename_axis("days_to_21_week_bin")
+        .reset_index(name="tests")
+    )
     age21_weekly["days_to_21"] = age21_weekly["days_to_21_week_bin"] + 3.5
     around21["days_to_21_28day_bin"] = np.floor(around21["days_to_21"] / 28).astype(int) * 28
-    age21_28day = around21.groupby("days_to_21_28day_bin", as_index=False).size().rename(columns={"size": "tests"})
-    age21_28day = age21_28day[age21_28day["days_to_21_28day_bin"].between(-728, 700, inclusive="both")].copy()
+    age21_28day = (
+        around21.groupby("days_to_21_28day_bin").size()
+        .reindex(np.arange(-728, 701, 28), fill_value=0)
+        .rename_axis("days_to_21_28day_bin")
+        .reset_index(name="tests")
+    )
     age21_28day["days_to_21"] = age21_28day["days_to_21_28day_bin"] + 14
     return {"daily": age21_daily, "weekly": age21_weekly, "28day": age21_28day}
 
@@ -810,6 +823,13 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
     ]:
         for bin_width, frame in build_age21_binned_tables(sample_desc).items():
             outputs[f"tests_relative_to_21_{sample}_{bin_width}"] = frame
+    accident = desc[desc["accident"].eq("Y")]
+    for period, start_date, end_date in [
+        ("1998_to_june_2014", "1998-01-01", "2014-06-30"),
+        ("july_2014_to_present", "2014-07-01", None),
+    ]:
+        for bin_width, frame in build_age21_binned_tables(accident, start_date, end_date).items():
+            outputs[f"tests_relative_to_21_accident_{period}_{bin_width}"] = frame
     for period, start_date, end_date in [
         ("1999_to_june_2014", "1999-01-01", "2014-06-30"),
         ("july_2014_to_present", "2014-07-01", None),
@@ -915,6 +935,32 @@ def plot_descriptives(tables: dict[str, pd.DataFrame]) -> None:
             clean_axes(ax)
             fig.tight_layout()
             fig.savefig(FIG_DIR / f"tests_relative_to_turning_21_{sample}_{bin_width}.svg", bbox_inches="tight")
+            plt.close(fig)
+
+    crash_period_specs = [
+        ("1998_to_june_2014", "1998-June 2014"),
+        ("july_2014_to_present", "July 2014-present"),
+    ]
+    for bin_width, label, x_limits in [
+        ("daily", "Daily observations", (-730, 730)),
+        ("weekly", "7-day bins", (-728, 728)),
+        ("28day", "28-day bins", (-728, 728)),
+    ]:
+        period_tables = [tables[f"tests_relative_to_21_accident_{period}_{bin_width}"] for period, _ in crash_period_specs]
+        y_max = np.ceil(max(frame["tests"].max() for frame in period_tables) * 1.05)
+        for period, period_label in crash_period_specs:
+            age21 = tables[f"tests_relative_to_21_accident_{period}_{bin_width}"]
+            fig, ax = plt.subplots(figsize=(9.6, 4.6))
+            ax.scatter(age21["days_to_21"], age21["tests"], s=12, color=PLOT_BLUE)
+            ax.axvline(0, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+            ax.set_xlim(*x_limits)
+            ax.set_ylim(0, y_max)
+            ax.set_title(f"Recorded-Collision Breath Tests Relative to Turning 21 ({period_label}; {label})")
+            ax.set_xlabel("Days from 21st birthday")
+            ax.set_ylabel("Crash observations")
+            clean_axes(ax)
+            fig.tight_layout()
+            fig.savefig(FIG_DIR / f"crashes_relative_to_turning_21_{period}_{bin_width}.svg", bbox_inches="tight")
             plt.close(fig)
 
     period_specs = [

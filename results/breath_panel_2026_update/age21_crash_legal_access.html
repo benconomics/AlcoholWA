@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recorded-Collision Breath Tests Relative to Age 21</title>
+<style>
+:root { --ink:#20252b; --muted:#5f6873; --rule:#d9dfe5; --blue:#1f4e79; }
+* { box-sizing:border-box; } body { margin:0; color:var(--ink); font-family:Arial,Helvetica,sans-serif; line-height:1.55; }
+main { max-width:1160px; margin:0 auto; padding:42px 28px 64px; } h1,h2 { line-height:1.2; } h1 { border-bottom:3px solid var(--blue); padding-bottom:20px; } h2 { margin-top:42px; padding-top:12px; border-top:1px solid var(--rule); font-size:1.35rem; }
+.pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:18px 0 28px; } figure { margin:0; } img { display:block; width:100%; height:auto; border:1px solid var(--rule); }
+table { border-collapse:collapse; width:100%; margin:18px 0 28px; } th,td { border-bottom:1px solid var(--rule); padding:11px 10px; text-align:left; vertical-align:top; } td span { color:var(--muted); }
+@media (max-width:760px) { main { padding:28px 18px 48px; } .pair { grid-template-columns:1fr; } }
+</style></head><body><main>
+<h1>Recorded-Collision Breath Tests Relative to Age 21</h1>
+<h2>Design</h2><p>The outcome is the daily count of de-duplicated breath-test observations marked as involving a recorded collision. Each sample covers two years on either side of the tested person's 21st birthday. The first period ends in June 2014; the second begins in July 2014, when legal adult cannabis sales began in Washington.</p>
+<p>The threshold estimates use a local Poisson count model within 90 days of age 21, with a post-21 indicator and separate linear trends on each side. The reported percentage jump is <code>100*(exp(beta)-1)</code>; standard errors use the robust delta method.</p>
+<h2>Age-21 Crash Jump</h2><table><thead><tr><th>Period</th><th>Percentage jump at 21</th><th>Relative-day cells</th></tr></thead><tbody><tr><th scope="row">1998-June 2014</th><td><strong>+63.5%</strong><br><span>Robust SE 16.5; p=0.000</span></td><td>181</td></tr><tr><th scope="row">July 2014-present</th><td><strong>+34.4%</strong><br><span>Robust SE 18.6; p=0.032</span></td><td>181</td></tr></tbody></table>
+<h2>Daily Counts</h2><div class="pair"><figure><img src="figures/crashes_relative_to_turning_21_1998_to_june_2014_daily.svg" alt="Daily recorded-collision breath tests relative to age 21, 1998 through June 2014."></figure><figure><img src="figures/crashes_relative_to_turning_21_july_2014_to_present_daily.svg" alt="Daily recorded-collision breath tests relative to age 21, July 2014 through present."></figure></div>
+<h2>7-Day Bins</h2><div class="pair"><figure><img src="figures/crashes_relative_to_turning_21_1998_to_june_2014_weekly.svg" alt="Weekly recorded-collision breath tests relative to age 21, 1998 through June 2014."></figure><figure><img src="figures/crashes_relative_to_turning_21_july_2014_to_present_weekly.svg" alt="Weekly recorded-collision breath tests relative to age 21, July 2014 through present."></figure></div>
+<h2>28-Day Bins</h2><div class="pair"><figure><img src="figures/crashes_relative_to_turning_21_1998_to_june_2014_28day.svg" alt="28-day recorded-collision breath tests relative to age 21, 1998 through June 2014."></figure><figure><img src="figures/crashes_relative_to_turning_21_july_2014_to_present_28day.svg" alt="28-day recorded-collision breath tests relative to age 21, July 2014 through present."></figure></div>
+</main></body></html>

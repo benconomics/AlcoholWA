@@ -66,6 +66,13 @@ def build_tables(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
     ]:
         for bin_width, frame in build_age21_binned_tables(sample_desc).items():
             outputs[f"tests_relative_to_21_{sample}_{bin_width}"] = frame
+    accident = desc[desc["accident"].eq("Y")]
+    for period, start_date, end_date in [
+        ("1998_to_june_2014", "1998-01-01", "2014-06-30"),
+        ("july_2014_to_present", "2014-07-01", None),
+    ]:
+        for bin_width, frame in build_age21_binned_tables(accident, start_date, end_date).items():
+            outputs[f"tests_relative_to_21_accident_{period}_{bin_width}"] = frame
     for period, start_date, end_date in [
         ("1999_to_june_2014", "1999-01-01", "2014-06-30"),
         ("july_2014_to_present", "2014-07-01", None),

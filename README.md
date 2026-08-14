@@ -64,6 +64,8 @@ and the four-year repeat indicator; it is local-only and excluded from GitHub.
 - Age-21 scatterplots using the same three bin widths for 1999-June 2014 and
   July 2014-present; matching y-axis limits within each bin width facilitate
   descriptive comparisons across the legal-marijuana-sales break
+- Recorded-collision age-21 scatterplots for 1998-June 2014 and July
+  2014-present, plus Stata local-Poisson percentage-jump estimates at age 21
 - BAC distribution with .02, .08, and .15 reference lines
 - BAC score distribution across the full observed range, with exact-zero
   readings retained and removed, plus score-level counts around the .02, .08,
@@ -86,6 +88,10 @@ and the four-year repeat indicator; it is local-only and excluded from GitHub.
   RD estimation with integer-BAC clustered standard errors.
 - `code/analysis/refresh_breath_rd_outputs.py`: redraws the RD estimate figure
   and brief from the Stata-produced table.
+- `code/analysis/estimate_age21_crash_rd_stata19.do`: Stata local-Poisson age-21
+  crash-count models with robust delta-method percentage-jump estimates.
+- `results/breath_panel_2026_update/age21_crash_legal_access.md` and `.html`:
+  recorded-collision age-21 exhibits and threshold estimates by period.
 - `code/analysis/breath_2026_descriptive_exhibits.py`: lightweight rerun script
   for aggregate exhibits from the cached de-duplicated raw parquet.
 - `results/breath_panel_2026_update/tables/`: aggregate CSV tables.
