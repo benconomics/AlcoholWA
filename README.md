@@ -34,6 +34,10 @@ near-threshold pairs were identified but are not merged into the recidivism
 outcome. The non-identifying summary is in `tables/person_linkage_audit.csv`;
 the detailed, name-containing review file stays local and is not published.
 
+The completed person-day panel contains 857,608 events for 667,659 Washington
+person keys, with no duplicate person-day records. Four-year repeat-offense
+outcomes are complete for index tests through 2022-06-17.
+
 ## Included exhibits
 
 - Daily breath-test counts with a 28-day moving average
@@ -42,6 +46,8 @@ the detailed, name-containing review file stays local and is not published.
 - Breath tests by hour of day
 - Breath tests relative to turning 21
 - BAC distribution with .02, .08, and .15 reference lines
+- Adult (.08) and youth (.02) BAC-threshold repeat-offense exhibits for the
+  1999-2008 and 1999-2022 complete-follow-up cohorts
 
 ## Files
 

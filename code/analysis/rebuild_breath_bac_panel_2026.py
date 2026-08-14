@@ -20,7 +20,6 @@ import matplotlib.pyplot as plt  # noqa: E402
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "2026" / "code" / "analysis"))
 
-from rebuild_breath_bac_panel_2019 import clean_and_panelize, first_nonempty  # noqa: E402
 from rebuild_breath_bac_panel import BAD_SUBJECT_NAMES  # noqa: E402
 
 
@@ -91,26 +90,6 @@ class ParsedName:
     @property
     def middle_initial(self) -> str:
         return self.middle[:1]
-
-
-class UnionFind:
-    def __init__(self, values: list[int]) -> None:
-        self.parent = {v: v for v in values}
-
-    def find(self, value: int) -> int:
-        parent = self.parent[value]
-        if parent != value:
-            self.parent[value] = self.find(parent)
-        return self.parent[value]
-
-    def union(self, left: int, right: int) -> None:
-        root_left = self.find(left)
-        root_right = self.find(right)
-        if root_left == root_right:
-            return
-        if root_right < root_left:
-            root_left, root_right = root_right, root_left
-        self.parent[root_right] = root_left
 
 
 def normalize_text(value: object) -> str:
@@ -476,32 +455,6 @@ def prepare_raw_descriptive_observations(raw: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def add_person_identifiers(panel: pd.DataFrame) -> pd.DataFrame:
-    frame = panel.copy()
-    parsed = frame["SubjectName"].map(parse_subject_name)
-    frame["last_name_norm"] = [p.last for p in parsed]
-    frame["first_name_norm"] = [p.first for p in parsed]
-    frame["middle_initial"] = [p.middle_initial for p in parsed]
-    frame["first_initial"] = [p.first_initial for p in parsed]
-    frame["dob"] = pd.to_datetime(frame["dob"], errors="coerce").dt.normalize()
-    frame["license_norm"] = frame["License"].map(normalize_license)
-    dob_str = frame["dob"].dt.strftime("%Y-%m-%d").fillna("")
-    frame["person_key_5l_fmi_dob"] = (
-        frame["last_name_norm"].str[:5]
-        + "|"
-        + frame["first_initial"]
-        + "|"
-        + frame["middle_initial"].fillna("")
-        + "|"
-        + dob_str
-    )
-    frame["person_key_5l_fi_dob"] = frame["last_name_norm"].str[:5] + "|" + frame["first_initial"] + "|" + dob_str
-    # This is Washington's operational person key: last-name prefix, first and
-    # middle initials, and date of birth. Fuzzy comparisons are audit-only.
-    frame["person_id_wa"] = pd.factorize(frame["person_key_5l_fmi_dob"], sort=True)[0] + 1
-    return frame
-
-
 def audit_washington_person_keys(raw: pd.DataFrame) -> pd.DataFrame:
     """Audit fuzzy candidate pairs without using them to merge people."""
     frame = raw.copy()
@@ -607,11 +560,123 @@ def audit_washington_person_keys(raw: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
+def build_washington_person_day_panel(raw: pd.DataFrame) -> pd.DataFrame:
+    """Create one selected breath-test record per Washington person-day."""
+    frame = raw.copy()
+    frame["event_date"] = pd.to_datetime(frame["event_date"], errors="coerce").dt.normalize()
+    frame["dob"] = pd.to_datetime(frame["dob"], errors="coerce").dt.normalize()
+    frame["subject_name_clean"] = frame["subject_name"].map(normalize_text)
+    frame["operator_clean"] = frame["operator"].map(normalize_text)
+    frame = frame[
+        frame["event_date"].notna()
+        & frame["dob"].notna()
+        & frame["crime"].notna()
+        & frame["subject_name_clean"].ne("")
+        & ~frame["subject_name_clean"].isin(BAD_SUBJECT_NAMES)
+        & ~frame["subject_name_clean"].str.contains("CODE", na=False)
+        & frame["subject_name_clean"].ne(frame["operator_clean"])
+    ].copy()
+    parsed = frame["subject_name"].map(parse_subject_name)
+    frame["last_name_norm"] = [p.last for p in parsed]
+    frame["first_name_norm"] = [p.first for p in parsed]
+    frame["first_initial"] = [p.first_initial for p in parsed]
+    frame["middle_initial"] = [p.middle_initial for p in parsed]
+    frame = frame[
+        frame["last_name_norm"].ne("")
+        & frame["first_initial"].ne("")
+        & ~frame["last_name_norm"].isin(["TEST", "NEW", "CODE"])
+    ].copy()
+    dob_str = frame["dob"].dt.strftime("%Y-%m-%d")
+    frame["person_key_5l_fmi_dob"] = (
+        frame["last_name_norm"].str[:5]
+        + "|"
+        + frame["first_initial"]
+        + "|"
+        + frame["middle_initial"].fillna("")
+        + "|"
+        + dob_str
+    )
+    frame["person_key_5l_fi_dob"] = frame["last_name_norm"].str[:5] + "|" + frame["first_initial"] + "|" + dob_str
+    frame["person_id_wa"] = pd.factorize(frame["person_key_5l_fmi_dob"], sort=True)[0] + 1
+
+    frame["alcohol1"] = pd.to_numeric(frame["alcohol1"], errors="coerce")
+    frame["alcohol2"] = pd.to_numeric(frame["alcohol2"], errors="coerce")
+    frame.loc[(frame["alcohol1"] > 0) & frame["alcohol2"].fillna(0).eq(0), "alcohol2"] = np.nan
+    frame.loc[frame["alcohol1"].fillna(0).eq(0) & (frame["alcohol2"] > 0), "alcohol2"] = np.nan
+    frame["pair_diff_abs"] = (frame["alcohol1"] - frame["alcohol2"]).abs()
+    frame["has_two_numeric_tests"] = frame["alcohol1"].notna() & frame["alcohol2"].notna()
+    frame["pair_gap_gt_20"] = (frame["has_two_numeric_tests"] & frame["pair_diff_abs"].gt(20)).astype(int)
+    frame["pair_gap_le_20"] = (frame["has_two_numeric_tests"] & frame["pair_diff_abs"].le(20)).astype(int)
+    frame["row_low_score"] = frame[["alcohol1", "alcohol2"]].min(axis=1, skipna=True)
+    time_columns = ["event_time", "test1_blow_time", "test2_blow_time", "observation_start_time"]
+    frame["row_sort_seconds"] = frame[time_columns].apply(lambda column: column.map(time_to_seconds)).max(axis=1, skipna=True).fillna(-1)
+
+    person_day = ["person_id_wa", "event_date"]
+    grouped = frame.groupby(person_day, sort=False)
+    frame["same_day_row_count"] = grouped["person_id_wa"].transform("size")
+    frame["has_same_day_retest_line"] = frame["same_day_row_count"].gt(1).astype(int)
+    frame["any_same_day_pair_gap_gt_20"] = grouped["pair_gap_gt_20"].transform("max")
+    frame["any_same_day_admissible_pair"] = grouped["pair_gap_le_20"].transform("max")
+    frame["same_day_legacy_low_score"] = grouped["row_low_score"].transform("min")
+
+    selected = (
+        frame.sort_values(
+            person_day + ["any_same_day_admissible_pair", "pair_gap_le_20", "row_sort_seconds", "source", "serial_no", "citation"],
+            ascending=[True, True, False, False, False, True, True, True],
+        )
+        .drop_duplicates(person_day, keep="first")
+        .copy()
+    )
+    selected["low_score"] = np.where(
+        selected["any_same_day_admissible_pair"].eq(1),
+        selected["row_low_score"],
+        selected["same_day_legacy_low_score"],
+    )
+    selected["low_score_mod"] = np.where(
+        selected["low_score"].notna(), selected["low_score"] - np.mod(selected["low_score"], 2), np.nan
+    )
+    selected["selected_row_pair_gap_gt_20"] = selected["pair_gap_gt_20"]
+    selected["selected_row_pair_gap_le_20"] = selected["pair_gap_le_20"]
+    selected["selected_row_has_two_numeric_tests"] = selected["has_two_numeric_tests"].astype(int)
+    selected["selected_row_is_latest_same_day"] = 1
+    selected["selected_row_low_score"] = selected["row_low_score"]
+    selected["year"] = selected["event_date"].dt.year
+    selected["male"] = selected["sex"].astype(str).str.upper().eq("M").astype(int)
+    selected["white"] = selected["ethnic_group"].astype(str).str.upper().eq("W").astype(int)
+    selected = selected.rename(
+        columns={
+            "event_date": "Date",
+            "serial_no": "SerialNo",
+            "citation": "Citation",
+            "subject_name": "SubjectName",
+            "license": "License",
+        }
+    )
+    return selected
+
+
 def recompute_repeat_outcomes(panel: pd.DataFrame) -> pd.DataFrame:
     frame = panel.copy()
     frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce").dt.normalize()
     frame["low_score"] = pd.to_numeric(frame["low_score"], errors="coerce")
-    frame = frame.sort_values(["person_id_wa", "Date", "SerialNo", "Citation"]).copy()
+    # The legacy panel is one row per legacy name/day. Re-collapse by the
+    # Washington person key so a same-day name variant cannot interrupt the
+    # next-offense sequence.
+    frame = (
+        frame.sort_values(
+            [
+                "person_id_wa",
+                "Date",
+                "any_same_day_admissible_pair",
+                "selected_row_pair_gap_le_20",
+                "SerialNo",
+                "Citation",
+            ],
+            ascending=[True, True, False, False, True, True],
+        )
+        .drop_duplicates(["person_id_wa", "Date"], keep="first")
+        .copy()
+    )
     frame["offense_wa"] = frame.groupby("person_id_wa").cumcount() + 1
     frame["total_dui_wa"] = frame.groupby("person_id_wa")["offense_wa"].transform("max") - 1
     frame["next_breath_date_wa"] = frame.groupby("person_id_wa")["Date"].shift(-1)
@@ -906,7 +971,9 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
         "",
         "## Threshold checks",
         "",
-        rd_display.to_markdown(index=False),
+        "```csv",
+        rd_display.to_csv(index=False).strip(),
+        "```",
         "",
         "## Files",
         "",
@@ -927,22 +994,23 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
     OUT_MD.write_text("\n".join(md) + "\n", encoding="utf-8")
 
 
-def main(raw_only: bool = False, linkage_audit_only: bool = False) -> None:
+def main(raw_only: bool = False, linkage_audit_only: bool = False, use_cached_raw: bool = False) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     TABLE_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    if linkage_audit_only and OUT_RAW.exists():
-        audit_washington_person_keys(pd.read_parquet(OUT_RAW))
-        print(f"Wrote Washington-key linkage audit to {TABLE_DIR} and {PRIVATE_DIR}")
-        return
-
-    old_raw = read_old_standardized_raw()
-    new_raw = pd.concat([read_new_datamaster(), read_new_draeger()], ignore_index=True)
-    raw = pd.concat([old_raw, new_raw], ignore_index=True)
-    raw_dedup, audit = dedupe_raw(raw)
-    audit.to_csv(TABLE_DIR / "raw_duplicate_audit.csv", index=False)
-    raw_dedup.to_parquet(OUT_RAW, index=False)
+    if use_cached_raw:
+        if not OUT_RAW.exists():
+            raise FileNotFoundError(f"Cached raw panel not found: {OUT_RAW}")
+        raw_dedup = pd.read_parquet(OUT_RAW)
+        audit = pd.read_csv(TABLE_DIR / "raw_duplicate_audit.csv")
+    else:
+        old_raw = read_old_standardized_raw()
+        new_raw = pd.concat([read_new_datamaster(), read_new_draeger()], ignore_index=True)
+        raw = pd.concat([old_raw, new_raw], ignore_index=True)
+        raw_dedup, audit = dedupe_raw(raw)
+        audit.to_csv(TABLE_DIR / "raw_duplicate_audit.csv", index=False)
+        raw_dedup.to_parquet(OUT_RAW, index=False)
 
     if linkage_audit_only:
         audit_washington_person_keys(raw_dedup)
@@ -953,10 +1021,7 @@ def main(raw_only: bool = False, linkage_audit_only: bool = False) -> None:
         print(f"Wrote de-duplicated raw breath records to {OUT_RAW}")
         return
 
-    clean_and_panelize.__globals__["time_to_seconds"] = time_to_seconds
-    panel_input = raw_dedup[[c for c in STANDARD_RAW_COLUMNS if c not in {"source_extract", "source_record_id"}]].copy()
-    panel = clean_and_panelize(panel_input)
-    panel = add_person_identifiers(panel)
+    panel = build_washington_person_day_panel(raw_dedup)
     panel = recompute_repeat_outcomes(panel)
     panel.to_parquet(OUT_PANEL_PARQUET, index=False)
     panel.to_csv(OUT_PANEL_CSV, index=False, compression="gzip")
@@ -992,5 +1057,10 @@ if __name__ == "__main__":
         action="store_true",
         help="Audit Washington person-key borderline matches without rebuilding the person-day panel.",
     )
+    parser.add_argument(
+        "--use-cached-raw",
+        action="store_true",
+        help="Build panel outputs from the cached de-duplicated raw parquet instead of re-importing source files.",
+    )
     args = parser.parse_args()
-    main(raw_only=args.raw_only, linkage_audit_only=args.linkage_audit_only)
+    main(raw_only=args.raw_only, linkage_audit_only=args.linkage_audit_only, use_cached_raw=args.use_cached_raw)
