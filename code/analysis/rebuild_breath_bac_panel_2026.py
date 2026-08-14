@@ -927,12 +927,15 @@ def plot_threshold_figures(binned: pd.DataFrame) -> None:
                 sub = sub[sub["bac_bin"].between(0.03, 0.20, inclusive="both")]
                 ax.set_xlim(0.03, 0.20)
             else:
-                sub = sub[sub["bac_bin"].between(0.0, 0.08, inclusive="both")]
-                ax.set_xlim(0.0, 0.08)
+                sub = sub[sub["bac_bin"].between(0.0, 0.20, inclusive="both")]
+                ax.set_xlim(0.0, 0.20)
             ax.scatter(sub["bac_bin"], sub["recid_rate"] * 100, s=np.clip(sub["n"], 15, 150), facecolors="none", edgecolors=PLOT_BLUE)
-            ax.axvline(threshold, color=PLOT_TEXT, linestyle="--", linewidth=1.0, label=".08 DUI per se" if population == "adult" else ".02 youth threshold")
+            ax.axvline(threshold, color=PLOT_TEXT, linestyle="--", linewidth=1.0, label=".08 DUI per se" if population == "adult" else ".02 zero tolerance")
             if population == "adult":
                 ax.axvline(0.15, color=PLOT_GOLD, linestyle=":", linewidth=1.3, label=".15 aggravated DUI")
+            else:
+                ax.axvline(0.08, color=PLOT_GOLD, linestyle=":", linewidth=1.3, label=".08 criminal threshold")
+                ax.axvline(0.15, color="#6b8e23", linestyle="-.", linewidth=1.2, label=".15 aggravated DUI")
             ax.set_title(cohort.replace("_full4y", " full 4y").replace("_", "-"))
             ax.set_xlabel("BAC")
             clean_axes(ax)
