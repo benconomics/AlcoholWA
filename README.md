@@ -60,3 +60,6 @@ outcomes are complete for index tests through 2022-06-17.
   for aggregate exhibits from the cached de-duplicated raw parquet.
 - `results/breath_panel_2026_update/tables/`: aggregate CSV tables.
 - `results/breath_panel_2026_update/figures/`: SVG figures.
+- `results/breath_panel_2026_update/washington_breath_test_trends.md` and
+  `.html`: short exhibit brief covering aggregate trends, age 21, and the
+  pre/post-July-2014 comparison.

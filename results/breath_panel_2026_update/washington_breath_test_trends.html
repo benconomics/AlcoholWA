@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Washington Breath-Test Trends Through 2026</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --paper: #ffffff;
+      --ink: #20252b;
+      --muted: #5f6873;
+      --rule: #d9dfe5;
+      --accent: #1f4e79;
+      --accent-soft: #edf3f8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #171b20;
+        --ink: #f1f4f6;
+        --muted: #b4bec7;
+        --rule: #3a434d;
+        --accent: #9cc6ed;
+        --accent-soft: #222c35;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+    }
+    main { max-width: 1160px; margin: 0 auto; padding: 42px 28px 64px; }
+    header { border-bottom: 3px solid var(--accent); padding-bottom: 20px; }
+    h1, h2, h3 { line-height: 1.2; margin: 0; }
+    h1 { font-size: 2rem; font-weight: 700; }
+    h2 { font-size: 1.38rem; margin-top: 44px; padding-top: 12px; border-top: 1px solid var(--rule); }
+    h3 { font-size: 1.05rem; margin-top: 28px; color: var(--accent); }
+    p { margin: 12px 0; }
+    .scope { color: var(--muted); margin-bottom: 0; }
+    .summary { margin: 22px 0 0; padding: 18px 20px; background: var(--accent-soft); border-left: 4px solid var(--accent); }
+    .summary h2 { border: 0; margin: 0 0 10px; padding: 0; font-size: 1.05rem; }
+    ul { margin: 0; padding-left: 20px; }
+    li + li { margin-top: 8px; }
+    figure { margin: 20px 0 30px; }
+    img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: #fff; }
+    figcaption { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 14px 0 28px; }
+    .pair figure { margin: 0; }
+    .pair figcaption { font-weight: 700; color: var(--ink); }
+    .note { color: var(--muted); font-size: 0.94rem; }
+    footer { border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; margin-top: 42px; padding-top: 16px; }
+    @media (max-width: 760px) {
+      main { padding: 28px 18px 48px; }
+      h1 { font-size: 1.65rem; }
+      .pair { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Washington Breath-Test Trends Through 2026</h1>
+      <p class="scope">De-duplicated breath-test observations, 1995-2026</p>
+    </header>
+
+    <section class="summary" aria-labelledby="summary-heading">
+      <h2 id="summary-heading">Executive Summary</h2>
+      <ul>
+        <li><strong>Testing volume rose through the late 1990s, stayed high through the 2000s, and then declined.</strong> The 2018-2019 overlap has been removed before constructing these series.</li>
+        <li><strong>Breath-test observations rise sharply at age 21.</strong> The pattern appears at daily, weekly, and 28-day resolutions in the two years around the 21st birthday.</li>
+        <li><strong>The age-21 discontinuity is smaller after July 2014.</strong> A local-linear comparison within 90 days of age 21 estimates a 44.5% increase before the policy break and a 36.4% increase afterward. This is preliminary descriptive evidence consistent with substitution, not a causal estimate.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="aggregate-heading">
+      <h2 id="aggregate-heading">Aggregate Breath-Test Patterns</h2>
+      <p>These figures use de-duplicated observations from 1995 through 2026. They describe tests, not the population rate of impaired driving.</p>
+      <figure>
+        <img src="figures/daily_tests_1995_2026.svg" alt="Daily Washington breath tests and a 28-day moving average from 1995 through 2026.">
+        <figcaption>Breath tests by date.</figcaption>
+      </figure>
+      <div class="pair">
+        <figure>
+          <img src="figures/tests_by_day_of_week.svg" alt="Washington breath tests by day of week.">
+          <figcaption>Breath tests by day of week.</figcaption>
+        </figure>
+        <figure>
+          <img src="figures/tests_by_day_of_month.svg" alt="Washington breath tests by day of month.">
+          <figcaption>Breath tests by day of month.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section aria-labelledby="age21-heading">
+      <h2 id="age21-heading">Observations Relative to Turning 21</h2>
+      <p>Each plot places a test by the number of days from the tested person's 21st birthday. The daily figure shows raw day-level counts; the other two smooth the same pattern into complete 7-day and 28-day bins. Partial outer bins are excluded.</p>
+      <figure>
+        <img src="figures/tests_relative_to_turning_21_daily.svg" alt="Daily breath-test observations by days relative to turning 21.">
+        <figcaption>Daily observations relative to turning 21.</figcaption>
+      </figure>
+      <figure>
+        <img src="figures/tests_relative_to_turning_21_weekly.svg" alt="Breath-test observations in 7-day bins by days relative to turning 21.">
+        <figcaption>7-day bins relative to turning 21.</figcaption>
+      </figure>
+      <figure>
+        <img src="figures/tests_relative_to_turning_21_28day.svg" alt="Breath-test observations in 28-day bins by days relative to turning 21.">
+        <figcaption>28-day bins relative to turning 21.</figcaption>
+      </figure>
+    </section>
+
+    <section aria-labelledby="policy-heading">
+      <h2 id="policy-heading">Age-21 Pattern Before and After Legal Cannabis Sales</h2>
+      <p>The pre-period runs from January 1999 through June 2014. The post-period begins in July 2014 and runs through the latest record. Within each pair, the two plots share the same y-axis scale; scales differ across bin widths because the observations are aggregated differently.</p>
+
+      <h3>Daily observations</h3>
+      <div class="pair">
+        <figure>
+          <img src="figures/tests_relative_to_turning_21_1999_to_june_2014_daily.svg" alt="Daily breath-test observations relative to turning 21 from 1999 through June 2014.">
+          <figcaption>1999-June 2014.</figcaption>
+        </figure>
+        <figure>
+          <img src="figures/tests_relative_to_turning_21_july_2014_to_present_daily.svg" alt="Daily breath-test observations relative to turning 21 from July 2014 through 2026.">
+          <figcaption>July 2014-present.</figcaption>
+        </figure>
+      </div>
+
+      <h3>7-day bins</h3>
+      <div class="pair">
+        <figure>
+          <img src="figures/tests_relative_to_turning_21_1999_to_june_2014_weekly.svg" alt="Breath-test observations in 7-day bins relative to turning 21 from 1999 through June 2014.">
+          <figcaption>1999-June 2014.</figcaption>
+        </figure>
+        <figure>
+          <img src="figures/tests_relative_to_turning_21_july_2014_to_present_weekly.svg" alt="Breath-test observations in 7-day bins relative to turning 21 from July 2014 through 2026.">
+          <figcaption>July 2014-present.</figcaption>
+        </figure>
+      </div>
+
+      <h3>28-day bins</h3>
+      <div class="pair">
+        <figure>
+          <img src="figures/tests_relative_to_turning_21_1999_to_june_2014_28day.svg" alt="Breath-test observations in 28-day bins relative to turning 21 from 1999 through June 2014.">
+          <figcaption>1999-June 2014.</figcaption>
+        </figure>
+        <figure>
+          <img src="figures/tests_relative_to_turning_21_july_2014_to_present_28day.svg" alt="Breath-test observations in 28-day bins relative to turning 21 from July 2014 through 2026.">
+          <figcaption>July 2014-present.</figcaption>
+        </figure>
+      </div>
+      <p class="note">The difference in age-21 discontinuities is consistent with some substitution away from alcohol when legal cannabis access begins at the same threshold. Because these are breath-test observations, the comparison remains preliminary and should be checked with placebo age cutoffs, broader national policy variation, and outcomes outside breath-test enforcement.</p>
+    </section>
+
+    <footer>Source: Washington breath-test panel update through 2026. Figures are based on de-duplicated observations.</footer>
+  </main>
+</body>
+</html>
