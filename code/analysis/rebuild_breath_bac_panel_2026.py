@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "2026" / "code" / "analysis"))
 
 from rebuild_breath_bac_panel_2019 import clean_and_panelize, first_nonempty  # noqa: E402
+from rebuild_breath_bac_panel import BAD_SUBJECT_NAMES  # noqa: E402
 
 
 OLD_RAW_PATH = ROOT / "breath_panel_2019_rebuild" / "standardized_breath_raw_1995_2019.parquet"
@@ -29,6 +30,7 @@ NEW_XLSX_PATH = ROOT / "2026" / "breathtests" / "R006001-040926_DB_REDACTED.xlsx
 OUT_DIR = ROOT / "breath_panel_2026_update"
 TABLE_DIR = OUT_DIR / "tables"
 FIG_DIR = OUT_DIR / "figures"
+PRIVATE_DIR = OUT_DIR / "private"
 OUT_RAW = OUT_DIR / "standardized_breath_raw_1995_2026_dedup.parquet"
 OUT_PANEL_PARQUET = OUT_DIR / "breath_panel_1995_2026.parquet"
 OUT_PANEL_CSV = OUT_DIR / "breath_panel_1995_2026.csv.gz"
@@ -494,47 +496,56 @@ def add_person_identifiers(panel: pd.DataFrame) -> pd.DataFrame:
         + dob_str
     )
     frame["person_key_5l_fi_dob"] = frame["last_name_norm"].str[:5] + "|" + frame["first_initial"] + "|" + dob_str
+    # This is Washington's operational person key: last-name prefix, first and
+    # middle initials, and date of birth. Fuzzy comparisons are audit-only.
+    frame["person_id_wa"] = pd.factorize(frame["person_key_5l_fmi_dob"], sort=True)[0] + 1
+    return frame
 
-    people = (
-        frame[
-            [
-                "person_key_5l_fmi_dob",
-                "person_key_5l_fi_dob",
-                "last_name_norm",
-                "first_name_norm",
-                "first_initial",
-                "middle_initial",
-                "dob",
-                "license_norm",
-            ]
-        ]
-        .drop_duplicates()
-        .reset_index(drop=True)
+
+def audit_washington_person_keys(raw: pd.DataFrame) -> pd.DataFrame:
+    """Audit fuzzy candidate pairs without using them to merge people."""
+    frame = raw.copy()
+    frame["subject_name_clean"] = frame["subject_name"].map(normalize_text)
+    frame["operator_clean"] = frame["operator"].map(normalize_text)
+    frame["dob"] = pd.to_datetime(frame["dob"], errors="coerce").dt.normalize()
+    frame = frame[
+        frame["dob"].notna()
+        & frame["subject_name_clean"].ne("")
+        & ~frame["subject_name_clean"].isin(BAD_SUBJECT_NAMES)
+        & ~frame["subject_name_clean"].str.contains("CODE", na=False)
+        & frame["subject_name_clean"].ne(frame["operator_clean"])
+    ].copy()
+    parsed = frame["subject_name"].map(parse_subject_name)
+    frame["last_name_norm"] = [p.last for p in parsed]
+    frame["first_name_norm"] = [p.first for p in parsed]
+    frame["first_initial"] = [p.first_initial for p in parsed]
+    frame["middle_initial"] = [p.middle_initial for p in parsed]
+    frame = frame[
+        frame["last_name_norm"].ne("")
+        & frame["first_initial"].ne("")
+        & ~frame["last_name_norm"].isin(["TEST", "NEW", "CODE"])
+    ].copy()
+    dob_str = frame["dob"].dt.strftime("%Y-%m-%d")
+    frame["person_key_5l_fmi_dob"] = (
+        frame["last_name_norm"].str[:5]
+        + "|"
+        + frame["first_initial"]
+        + "|"
+        + frame["middle_initial"].fillna("")
+        + "|"
+        + dob_str
     )
-    people["person_row"] = np.arange(len(people))
-    uf = UnionFind(people["person_row"].tolist())
 
-    exact_groups = people.groupby("person_key_5l_fi_dob", sort=False)["person_row"].apply(list)
-    for rows in exact_groups:
-        if len(rows) > 1:
-            root = rows[0]
-            for other in rows[1:]:
-                uf.union(int(root), int(other))
-
-    license_groups = people.loc[people["license_norm"].ne(""), :].groupby(["dob", "license_norm"], sort=False)["person_row"].apply(list)
-    for rows in license_groups:
-        if len(rows) > 1:
-            root = rows[0]
-            for other in rows[1:]:
-                uf.union(int(root), int(other))
-
-    for _, sub in people.groupby(["dob", "first_initial"], dropna=False, sort=False):
-        if len(sub) < 2 or len(sub) > 350:
-            continue
-        records = sub.to_dict("records")
-        for i, left in enumerate(records):
-            for right in records[i + 1 :]:
-                if not left["last_name_norm"] or not right["last_name_norm"]:
+    people = frame[
+        ["person_key_5l_fmi_dob", "last_name_norm", "first_name_norm", "first_initial", "middle_initial", "dob"]
+    ].drop_duplicates()
+    name_variants = people.groupby("person_key_5l_fmi_dob", sort=False).size()
+    candidate_rows: list[dict[str, object]] = []
+    for _, group in people.groupby(["dob", "first_initial"], sort=False):
+        records = group.to_dict("records")
+        for index, left in enumerate(records):
+            for right in records[index + 1 :]:
+                if left["person_key_5l_fmi_dob"] == right["person_key_5l_fmi_dob"]:
                     continue
                 middle_ok = (
                     not left["middle_initial"]
@@ -544,32 +555,70 @@ def add_person_identifiers(panel: pd.DataFrame) -> pd.DataFrame:
                 last_ratio = SequenceMatcher(None, left["last_name_norm"], right["last_name_norm"]).ratio()
                 first_ratio = SequenceMatcher(None, left["first_name_norm"], right["first_name_norm"]).ratio()
                 same_prefix = left["last_name_norm"][:5] == right["last_name_norm"][:5]
-                if middle_ok and ((last_ratio >= 0.90 and first_ratio >= 0.88) or (same_prefix and first_ratio >= 0.86)):
-                    uf.union(int(left["person_row"]), int(right["person_row"]))
+                fuzzy_candidate = middle_ok and (
+                    (last_ratio >= 0.90 and first_ratio >= 0.88) or (same_prefix and first_ratio >= 0.86)
+                )
+                boundary_case = middle_ok and (
+                    (0.85 <= last_ratio < 0.90 and first_ratio >= 0.88)
+                    or (last_ratio >= 0.90 and 0.82 <= first_ratio < 0.88)
+                    or (same_prefix and 0.82 <= first_ratio < 0.86)
+                )
+                if not (fuzzy_candidate or boundary_case):
+                    continue
+                candidate_rows.append(
+                    {
+                        "review_status": "fuzzy_candidate" if fuzzy_candidate else "boundary_not_merged",
+                        "match_basis": "same_last5_prefix" if same_prefix else "high_name_similarity",
+                        "last_name_similarity": last_ratio,
+                        "first_name_similarity": first_ratio,
+                        "middle_initial_compatible": middle_ok,
+                        "person_key_left": left["person_key_5l_fmi_dob"],
+                        "last_name_left": left["last_name_norm"],
+                        "first_name_left": left["first_name_norm"],
+                        "middle_initial_left": left["middle_initial"],
+                        "person_key_right": right["person_key_5l_fmi_dob"],
+                        "last_name_right": right["last_name_norm"],
+                        "first_name_right": right["first_name_norm"],
+                        "middle_initial_right": right["middle_initial"],
+                        "dob": left["dob"],
+                    }
+                )
 
-    people["prob_root"] = people["person_row"].map(lambda v: uf.find(int(v)))
-    people["person_id_prob"] = pd.factorize(people["prob_root"], sort=True)[0] + 1
-    people["fuzzy_cluster_size"] = people.groupby("person_id_prob")["person_row"].transform("size")
-    frame = frame.merge(
-        people[["person_key_5l_fmi_dob", "person_key_5l_fi_dob", "person_id_prob", "fuzzy_cluster_size"]].drop_duplicates(),
-        on=["person_key_5l_fmi_dob", "person_key_5l_fi_dob"],
-        how="left",
+    private_matches = pd.DataFrame(candidate_rows)
+    PRIVATE_DIR.mkdir(parents=True, exist_ok=True)
+    private_matches.to_csv(PRIVATE_DIR / "washington_key_borderline_matches.csv", index=False)
+    summary = pd.DataFrame(
+        [
+            {"metric": "eligible_test_rows", "value": len(frame)},
+            {"metric": "washington_person_keys", "value": frame["person_key_5l_fmi_dob"].nunique()},
+            {"metric": "distinct_name_variants", "value": len(people)},
+            {"metric": "washington_keys_with_multiple_name_variants", "value": int(name_variants.gt(1).sum())},
+            {
+                "metric": "fuzzy_candidate_pairs_audit_only",
+                "value": int(private_matches["review_status"].eq("fuzzy_candidate").sum()) if not private_matches.empty else 0,
+            },
+            {
+                "metric": "boundary_pairs_not_merged",
+                "value": int(private_matches["review_status"].eq("boundary_not_merged").sum()) if not private_matches.empty else 0,
+            },
+        ]
     )
-    return frame
+    summary.to_csv(TABLE_DIR / "person_linkage_audit.csv", index=False)
+    return summary
 
 
 def recompute_repeat_outcomes(panel: pd.DataFrame) -> pd.DataFrame:
     frame = panel.copy()
     frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce").dt.normalize()
     frame["low_score"] = pd.to_numeric(frame["low_score"], errors="coerce")
-    frame = frame.sort_values(["person_id_prob", "Date", "SerialNo", "Citation"]).copy()
-    frame["offense_prob"] = frame.groupby("person_id_prob").cumcount() + 1
-    frame["total_dui_prob"] = frame.groupby("person_id_prob")["offense_prob"].transform("max") - 1
-    frame["next_breath_date_prob"] = frame.groupby("person_id_prob")["Date"].shift(-1)
-    frame["next_breath_bac_prob"] = frame.groupby("person_id_prob")["low_score"].shift(-1)
-    days_next = (frame["next_breath_date_prob"] - frame["Date"]).dt.days
-    frame["days_to_next_breath_prob"] = days_next
-    frame["recidivism_4y_prob"] = ((days_next > 0) & (days_next <= FOLLOWUP_DAYS)).astype(int)
+    frame = frame.sort_values(["person_id_wa", "Date", "SerialNo", "Citation"]).copy()
+    frame["offense_wa"] = frame.groupby("person_id_wa").cumcount() + 1
+    frame["total_dui_wa"] = frame.groupby("person_id_wa")["offense_wa"].transform("max") - 1
+    frame["next_breath_date_wa"] = frame.groupby("person_id_wa")["Date"].shift(-1)
+    frame["next_breath_bac_wa"] = frame.groupby("person_id_wa")["low_score"].shift(-1)
+    days_next = (frame["next_breath_date_wa"] - frame["Date"]).dt.days
+    frame["days_to_next_breath_wa"] = days_next
+    frame["recidivism_4y_wa"] = ((days_next > 0) & (days_next <= FOLLOWUP_DAYS)).astype(int)
     frame["low_bac"] = frame["low_score"] / 1000
     frame["low_bac_bin"] = pd.to_numeric(frame["low_score_mod"], errors="coerce") / 1000
     frame["age_at_event"] = (frame["Date"] - pd.to_datetime(frame["dob"], errors="coerce")).dt.days / 365.25
@@ -618,14 +667,14 @@ def run_threshold_rd(sample: pd.DataFrame, population: str, cohort: str, thresho
     running = sub["low_score"].to_numpy(dtype=float) - threshold_score
     treat = (sub["low_score"].to_numpy(dtype=float) >= threshold_score).astype(float)
     x = np.column_stack([np.ones(len(sub)), treat, running, treat * running])
-    y = sub["recidivism_4y_prob"].to_numpy(dtype=float)
+    y = sub["recidivism_4y_wa"].to_numpy(dtype=float)
     fit = cluster_ols(y, x, running)
     coef = float(fit["beta"][1])
     se = float(fit["se"][1])
     z = coef / se if se > 0 else np.nan
     p_value = math.erfc(abs(z) / math.sqrt(2)) if not np.isnan(z) else np.nan
-    below = sub.loc[sub["low_score"] == threshold_score - 1, "recidivism_4y_prob"].mean()
-    above = sub.loc[sub["low_score"] == threshold_score, "recidivism_4y_prob"].mean()
+    below = sub.loc[sub["low_score"] == threshold_score - 1, "recidivism_4y_wa"].mean()
+    above = sub.loc[sub["low_score"] == threshold_score, "recidivism_4y_wa"].mean()
     return {
         "population": population,
         "cohort": cohort,
@@ -689,7 +738,7 @@ def build_rd_outputs(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         rd_rows.append(run_threshold_rd(sample, population, cohort, threshold, bandwidth))
         binned = (
             sample.groupby("low_bac_bin", as_index=False)
-            .agg(n=("Date", "size"), recid_rate=("recidivism_4y_prob", "mean"))
+            .agg(n=("Date", "size"), recid_rate=("recidivism_4y_wa", "mean"))
             .rename(columns={"low_bac_bin": "bac_bin"})
         )
         binned["population"] = population
@@ -713,9 +762,8 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
     person_summary = pd.DataFrame(
         [
             {"metric": "person_day_events", "value": len(panel)},
-            {"metric": "strict_5l_fmi_dob_ids", "value": panel["person_key_5l_fmi_dob"].nunique()},
-            {"metric": "probabilistic_person_ids", "value": panel["person_id_prob"].nunique()},
-            {"metric": "events_in_fuzzy_clusters_size_gt1", "value": int(panel["fuzzy_cluster_size"].gt(1).sum())},
+            {"metric": "washington_5l_fmi_dob_ids", "value": panel["person_key_5l_fmi_dob"].nunique()},
+            {"metric": "washington_person_ids", "value": panel["person_id_wa"].nunique()},
             {"metric": "max_event_date", "value": panel["Date"].max().date().isoformat()},
             {"metric": "full_4y_index_cutoff", "value": (panel["Date"].max() - pd.Timedelta(days=FOLLOWUP_DAYS)).date().isoformat()},
         ]
@@ -853,8 +901,8 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
         "",
         f"- Person-day events in rebuilt panel: `{len(panel):,}`.",
         f"- Event dates run through `{max_date.date().isoformat()}`; full 4-year follow-up index events run through `{cutoff.date().isoformat()}`.",
-        "- The requested deterministic identifier is `person_key_5l_fmi_dob`: first five letters of last name, first initial, middle initial, and DOB.",
-        "- `person_id_prob` additionally links records with the same DOB and first initial when last/first names are highly similar, or when nonblank license numbers match.",
+        "- Recidivism uses `person_id_wa`, a factorized version of `person_key_5l_fmi_dob`: first five letters of last name, first initial, middle initial, and DOB.",
+        "- Fuzzy comparisons are audit-only and are never used to merge people in the recidivism outcome.",
         "",
         "## Threshold checks",
         "",
@@ -866,6 +914,7 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
         f"- `breath_panel_1995_2026.parquet`",
         f"- `breath_panel_1995_2026.csv.gz`",
         f"- `tables/raw_duplicate_audit.csv`",
+        f"- `tables/person_linkage_audit.csv`",
         f"- `tables/threshold_recidivism_rd.csv`",
         f"- `figures/daily_tests_1995_2026.svg`",
         f"- `figures/tests_by_day_of_week.svg`",
@@ -878,10 +927,15 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
     OUT_MD.write_text("\n".join(md) + "\n", encoding="utf-8")
 
 
-def main(raw_only: bool = False) -> None:
+def main(raw_only: bool = False, linkage_audit_only: bool = False) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     TABLE_DIR.mkdir(parents=True, exist_ok=True)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    if linkage_audit_only and OUT_RAW.exists():
+        audit_washington_person_keys(pd.read_parquet(OUT_RAW))
+        print(f"Wrote Washington-key linkage audit to {TABLE_DIR} and {PRIVATE_DIR}")
+        return
 
     old_raw = read_old_standardized_raw()
     new_raw = pd.concat([read_new_datamaster(), read_new_draeger()], ignore_index=True)
@@ -889,6 +943,11 @@ def main(raw_only: bool = False) -> None:
     raw_dedup, audit = dedupe_raw(raw)
     audit.to_csv(TABLE_DIR / "raw_duplicate_audit.csv", index=False)
     raw_dedup.to_parquet(OUT_RAW, index=False)
+
+    if linkage_audit_only:
+        audit_washington_person_keys(raw_dedup)
+        print(f"Wrote Washington-key linkage audit to {TABLE_DIR} and {PRIVATE_DIR}")
+        return
 
     if raw_only:
         print(f"Wrote de-duplicated raw breath records to {OUT_RAW}")
@@ -928,5 +987,10 @@ if __name__ == "__main__":
         action="store_true",
         help="Rebuild only the de-duplicated raw extract and duplicate audit.",
     )
+    parser.add_argument(
+        "--linkage-audit-only",
+        action="store_true",
+        help="Audit Washington person-key borderline matches without rebuilding the person-day panel.",
+    )
     args = parser.parse_args()
-    main(raw_only=args.raw_only)
+    main(raw_only=args.raw_only, linkage_audit_only=args.linkage_audit_only)

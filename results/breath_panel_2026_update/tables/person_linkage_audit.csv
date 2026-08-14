@@ -1,0 +1,7 @@
+metric,value
+eligible_test_rows,936587
+washington_person_keys,667667
+distinct_name_variants,678579
+washington_keys_with_multiple_name_variants,10593
+fuzzy_candidate_pairs_audit_only,5763
+boundary_pairs_not_merged,942

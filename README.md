@@ -25,6 +25,15 @@ names and a placeholder license value while the updated extract commonly has a
 middle initial and no license. It is limited to Draeger observations with a
 nonmissing instrument, event time, and DOB.
 
+## Person Identifier
+
+Recidivism uses Washington's operational composite identifier: the first five
+letters of last name, first initial, middle initial, and date of birth. Fuzzy
+name comparisons are audit-only: 5,763 plausible cross-key pairs and 942
+near-threshold pairs were identified but are not merged into the recidivism
+outcome. The non-identifying summary is in `tables/person_linkage_audit.csv`;
+the detailed, name-containing review file stays local and is not published.
+
 ## Included exhibits
 
 - Daily breath-test counts with a 28-day moving average
