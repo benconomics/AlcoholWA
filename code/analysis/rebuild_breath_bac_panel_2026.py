@@ -826,9 +826,11 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
     age21_daily = around21.groupby("days_to_21", as_index=False).size().rename(columns={"size": "tests"})
     around21["days_to_21_week_bin"] = np.floor(around21["days_to_21"] / 7).astype(int) * 7
     age21_weekly = around21.groupby("days_to_21_week_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_weekly = age21_weekly[age21_weekly["days_to_21_week_bin"].between(-728, 721, inclusive="both")].copy()
     age21_weekly["days_to_21"] = age21_weekly["days_to_21_week_bin"] + 3.5
     around21["days_to_21_28day_bin"] = np.floor(around21["days_to_21"] / 28).astype(int) * 28
     age21_28day = around21.groupby("days_to_21_28day_bin", as_index=False).size().rename(columns={"size": "tests"})
+    age21_28day = age21_28day[age21_28day["days_to_21_28day_bin"].between(-728, 700, inclusive="both")].copy()
     age21_28day["days_to_21"] = age21_28day["days_to_21_28day_bin"] + 14
 
     person_summary = pd.DataFrame(
@@ -914,8 +916,8 @@ def plot_descriptives(tables: dict[str, pd.DataFrame]) -> None:
 
     for table_name, label, filename, x_limits in [
         ("tests_relative_to_21_daily", "Daily observations", "tests_relative_to_turning_21_daily.svg", (-730, 730)),
-        ("tests_relative_to_21_weekly", "7-day bins", "tests_relative_to_turning_21_weekly.svg", (-735, 735)),
-        ("tests_relative_to_21_28day", "28-day bins", "tests_relative_to_turning_21_28day.svg", (-756, 756)),
+        ("tests_relative_to_21_weekly", "7-day bins", "tests_relative_to_turning_21_weekly.svg", (-728, 728)),
+        ("tests_relative_to_21_28day", "28-day bins", "tests_relative_to_turning_21_28day.svg", (-728, 728)),
     ]:
         age21 = tables[table_name]
         fig, ax = plt.subplots(figsize=(9.6, 4.6))
