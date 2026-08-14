@@ -44,9 +44,9 @@ Adults are age 21 and older with the adult DUI crime code. Youth are ages 18-20 
 
 ## BAC and Four-Year Recidivism Scatterplots
 
-Each point is a 0.001-BAC cell; circle size is proportional to the number of index tests in the cell. These displays retain broader BAC ranges for visual context, whereas the tabled RD models use the stated +/-0.05 bandwidth around each threshold.
+The adult comparison uses fixed-size points for 0.002-BAC score bins and stacks the original and updated windows vertically with matching axes. The remaining displays retain their broader BAC ranges for visual context, whereas the tabled RD models use the stated +/-0.05 bandwidth around each threshold.
 
-![Adult BAC and repeat testing](figures/adult_threshold_recidivism.svg)
+![Adult BAC and repeat testing, original versus updated data](figures/adult_bac_recidivism_original_vs_updated.svg)
 
 ![Adult BAC and repeat testing, 2009-2022](figures/adult_threshold_recidivism_2009_2022.svg)
 

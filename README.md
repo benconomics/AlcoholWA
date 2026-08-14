@@ -90,6 +90,9 @@ and the four-year repeat indicator; it is local-only and excluded from GitHub.
   and brief from the Stata-produced table.
 - `code/analysis/build_adult_rd_social_figure.py`: creates the adult .08/.15
   social-ready confidence-interval figure from the Stata estimates.
+- `code/analysis/build_adult_recidivism_scatter_comparison.py`: creates the
+  vertically stacked adult BAC-recidivism comparison for the original and
+  updated analysis windows.
 - `code/analysis/estimate_age21_crash_rd_stata19.do`: Stata local-Poisson age-21
   crash-count models with robust delta-method percentage-jump estimates.
 - `code/analysis/breath_2026_descriptive_exhibits.py`: lightweight rerun script
