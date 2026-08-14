@@ -18,6 +18,7 @@ from rebuild_breath_bac_panel_2026 import (  # noqa: E402
     FIG_DIR,
     OUT_RAW,
     TABLE_DIR,
+    build_age21_binned_tables,
     plot_descriptives,
     prepare_raw_descriptive_observations,
     time_to_seconds,
@@ -43,16 +44,7 @@ def build_tables(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
     dow = desc.groupby("dow", observed=False, as_index=False).size().rename(columns={"size": "tests"})
     dom = desc.groupby("day_of_month", as_index=False).size().rename(columns={"size": "tests"})
     hour = desc.dropna(subset=["hour"]).groupby("hour", as_index=False).size().rename(columns={"size": "tests"})
-    around21 = desc[desc["days_to_21"].between(-730, 730, inclusive="both")].copy()
-    age21_daily = around21.groupby("days_to_21", as_index=False).size().rename(columns={"size": "tests"})
-    around21["days_to_21_week_bin"] = np.floor(around21["days_to_21"] / 7).astype(int) * 7
-    age21_weekly = around21.groupby("days_to_21_week_bin", as_index=False).size().rename(columns={"size": "tests"})
-    age21_weekly = age21_weekly[age21_weekly["days_to_21_week_bin"].between(-728, 721, inclusive="both")].copy()
-    age21_weekly["days_to_21"] = age21_weekly["days_to_21_week_bin"] + 3.5
-    around21["days_to_21_28day_bin"] = np.floor(around21["days_to_21"] / 28).astype(int) * 28
-    age21_28day = around21.groupby("days_to_21_28day_bin", as_index=False).size().rename(columns={"size": "tests"})
-    age21_28day = age21_28day[age21_28day["days_to_21_28day_bin"].between(-728, 700, inclusive="both")].copy()
-    age21_28day["days_to_21"] = age21_28day["days_to_21_28day_bin"] + 14
+    age21 = build_age21_binned_tables(desc)
     source_years = (
         raw.groupby(["source_extract", "source", raw["event_date"].dt.year], as_index=False)
         .size()
@@ -63,11 +55,17 @@ def build_tables(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
         "tests_by_day_of_week": dow,
         "tests_by_day_of_month": dom,
         "tests_by_hour": hour,
-        "tests_relative_to_21_daily": age21_daily,
-        "tests_relative_to_21_weekly": age21_weekly,
-        "tests_relative_to_21_28day": age21_28day,
+        "tests_relative_to_21_daily": age21["daily"],
+        "tests_relative_to_21_weekly": age21["weekly"],
+        "tests_relative_to_21_28day": age21["28day"],
         "source_years_after_dedup": source_years,
     }
+    for period, start_date, end_date in [
+        ("1999_to_june_2014", "1999-01-01", "2014-06-30"),
+        ("july_2014_to_present", "2014-07-01", None),
+    ]:
+        for bin_width, frame in build_age21_binned_tables(desc, start_date, end_date).items():
+            outputs[f"tests_relative_to_21_{period}_{bin_width}"] = frame
     for name, frame in outputs.items():
         frame.to_csv(TABLE_DIR / f"{name}.csv", index=False)
     return outputs

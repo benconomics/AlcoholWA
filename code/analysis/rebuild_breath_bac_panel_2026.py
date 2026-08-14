@@ -815,14 +815,17 @@ def build_rd_outputs(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return pd.DataFrame(rd_rows), pd.concat(bin_rows, ignore_index=True)
 
 
-def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    desc = prepare_raw_descriptive_observations(raw)
-    daily = desc.groupby("event_date", as_index=False).size().rename(columns={"size": "tests"})
-    daily["tests_28d_ma"] = daily["tests"].rolling(28, min_periods=1, center=True).mean()
-    dow = desc.groupby("dow", observed=False, as_index=False).size().rename(columns={"size": "tests"})
-    dom = desc.groupby("day_of_month", as_index=False).size().rename(columns={"size": "tests"})
-    hour = desc.dropna(subset=["hour"]).groupby("hour", as_index=False).size().rename(columns={"size": "tests"})
+def build_age21_binned_tables(
+    desc: pd.DataFrame,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, pd.DataFrame]:
     around21 = desc[desc["days_to_21"].between(-730, 730, inclusive="both")].copy()
+    if start_date is not None:
+        around21 = around21[around21["event_date"] >= pd.Timestamp(start_date)]
+    if end_date is not None:
+        around21 = around21[around21["event_date"] <= pd.Timestamp(end_date)]
+
     age21_daily = around21.groupby("days_to_21", as_index=False).size().rename(columns={"size": "tests"})
     around21["days_to_21_week_bin"] = np.floor(around21["days_to_21"] / 7).astype(int) * 7
     age21_weekly = around21.groupby("days_to_21_week_bin", as_index=False).size().rename(columns={"size": "tests"})
@@ -832,6 +835,17 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
     age21_28day = around21.groupby("days_to_21_28day_bin", as_index=False).size().rename(columns={"size": "tests"})
     age21_28day = age21_28day[age21_28day["days_to_21_28day_bin"].between(-728, 700, inclusive="both")].copy()
     age21_28day["days_to_21"] = age21_28day["days_to_21_28day_bin"] + 14
+    return {"daily": age21_daily, "weekly": age21_weekly, "28day": age21_28day}
+
+
+def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    desc = prepare_raw_descriptive_observations(raw)
+    daily = desc.groupby("event_date", as_index=False).size().rename(columns={"size": "tests"})
+    daily["tests_28d_ma"] = daily["tests"].rolling(28, min_periods=1, center=True).mean()
+    dow = desc.groupby("dow", observed=False, as_index=False).size().rename(columns={"size": "tests"})
+    dom = desc.groupby("day_of_month", as_index=False).size().rename(columns={"size": "tests"})
+    hour = desc.dropna(subset=["hour"]).groupby("hour", as_index=False).size().rename(columns={"size": "tests"})
+    age21 = build_age21_binned_tables(desc)
 
     person_summary = pd.DataFrame(
         [
@@ -848,11 +862,17 @@ def save_descriptive_tables(raw: pd.DataFrame, panel: pd.DataFrame) -> dict[str,
         "tests_by_day_of_week": dow,
         "tests_by_day_of_month": dom,
         "tests_by_hour": hour,
-        "tests_relative_to_21_daily": age21_daily,
-        "tests_relative_to_21_weekly": age21_weekly,
-        "tests_relative_to_21_28day": age21_28day,
+        "tests_relative_to_21_daily": age21["daily"],
+        "tests_relative_to_21_weekly": age21["weekly"],
+        "tests_relative_to_21_28day": age21["28day"],
         "person_identifier_summary": person_summary,
     }
+    for period, start_date, end_date in [
+        ("1999_to_june_2014", "1999-01-01", "2014-06-30"),
+        ("july_2014_to_present", "2014-07-01", None),
+    ]:
+        for bin_width, frame in build_age21_binned_tables(desc, start_date, end_date).items():
+            outputs[f"tests_relative_to_21_{period}_{bin_width}"] = frame
     for name, frame in outputs.items():
         frame.to_csv(TABLE_DIR / f"{name}.csv", index=False)
     return outputs
@@ -931,6 +951,33 @@ def plot_descriptives(tables: dict[str, pd.DataFrame]) -> None:
         fig.tight_layout()
         fig.savefig(FIG_DIR / filename, bbox_inches="tight")
         plt.close(fig)
+
+    period_specs = [
+        ("1999_to_june_2014", "1999-June 2014"),
+        ("july_2014_to_present", "July 2014-present"),
+    ]
+    bin_specs = [
+        ("daily", "Daily observations", (-730, 730)),
+        ("weekly", "7-day bins", (-728, 728)),
+        ("28day", "28-day bins", (-728, 728)),
+    ]
+    for bin_width, label, x_limits in bin_specs:
+        period_tables = [tables[f"tests_relative_to_21_{period}_{bin_width}"] for period, _ in period_specs]
+        y_max = np.ceil(max(frame["tests"].max() for frame in period_tables) * 1.05)
+        for period, period_label in period_specs:
+            age21 = tables[f"tests_relative_to_21_{period}_{bin_width}"]
+            fig, ax = plt.subplots(figsize=(9.6, 4.6))
+            ax.scatter(age21["days_to_21"], age21["tests"], s=12, color=PLOT_BLUE)
+            ax.axvline(0, color=PLOT_TEXT, linestyle="--", linewidth=1.0)
+            ax.set_xlim(*x_limits)
+            ax.set_ylim(0, y_max)
+            ax.set_title(f"Breath-Test Observations Relative to Turning 21 ({period_label}; {label})")
+            ax.set_xlabel("Days from 21st birthday")
+            ax.set_ylabel("Observations")
+            clean_axes(ax)
+            fig.tight_layout()
+            fig.savefig(FIG_DIR / f"tests_relative_to_turning_21_{period}_{bin_width}.svg", bbox_inches="tight")
+            plt.close(fig)
 
 
 def plot_threshold_figures(binned: pd.DataFrame) -> None:
@@ -1032,6 +1079,12 @@ def write_markdown(raw_audit: pd.DataFrame, panel: pd.DataFrame, rd: pd.DataFram
         f"- `figures/tests_relative_to_turning_21_daily.svg`",
         f"- `figures/tests_relative_to_turning_21_weekly.svg`",
         f"- `figures/tests_relative_to_turning_21_28day.svg`",
+        f"- `figures/tests_relative_to_turning_21_1999_to_june_2014_daily.svg`",
+        f"- `figures/tests_relative_to_turning_21_1999_to_june_2014_weekly.svg`",
+        f"- `figures/tests_relative_to_turning_21_1999_to_june_2014_28day.svg`",
+        f"- `figures/tests_relative_to_turning_21_july_2014_to_present_daily.svg`",
+        f"- `figures/tests_relative_to_turning_21_july_2014_to_present_weekly.svg`",
+        f"- `figures/tests_relative_to_turning_21_july_2014_to_present_28day.svg`",
         f"- `figures/adult_threshold_recidivism.svg`",
         f"- `figures/youth_threshold_recidivism.svg`",
     ]
