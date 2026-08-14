@@ -50,8 +50,9 @@ outcomes are complete for index tests through 2022-06-17.
   July 2014-present; matching y-axis limits within each bin width facilitate
   descriptive comparisons across the legal-marijuana-sales break
 - BAC distribution with .02, .08, and .15 reference lines
-- BAC score distribution with exact-zero readings retained and removed, plus
-  score-level counts around the .02, .08, and .15 thresholds
+- BAC score distribution across the full observed range, with exact-zero
+  readings retained and removed, plus score-level counts around the .02, .08,
+  and .15 thresholds
 - Youth crime-code and Draeger-platform audit by year
 - Adult (.08) and youth (.02) BAC-threshold repeat-offense exhibits for the
   1999-2008 and 1999-2022 complete-follow-up cohorts

@@ -40,9 +40,10 @@ def build_bac_distribution(raw: pd.DataFrame) -> pd.DataFrame:
     frame = raw[
         raw["age_at_event"].ge(18)
         & raw["crime"].isin([1, 3])
-        & raw["low_score"].between(0, 200, inclusive="both")
+        & raw["low_score"].ge(0)
     ].copy()
-    counts = frame.groupby("low_score").size().reindex(range(201), fill_value=0)
+    max_score = int(frame["low_score"].max())
+    counts = frame.groupby("low_score").size().reindex(range(max_score + 1), fill_value=0)
     output = pd.DataFrame({"bac": counts.index / 1000, "tests_with_zero": counts.to_numpy()})
     output["tests_without_zero"] = output["tests_with_zero"]
     output.loc[output["bac"].eq(0), "tests_without_zero"] = 0
@@ -78,12 +79,12 @@ def plot_bac_distribution(distribution: pd.DataFrame) -> None:
         ax.set_ylabel("Tests")
         clean_axes(ax)
     axes[1].set_xlabel("Lower recorded BAC")
-    axes[1].set_xlim(0, 0.20)
+    axes[1].set_xlim(0, distribution["bac"].max())
     axes[0].text(0.02, axes[0].get_ylim()[1] * 0.94, ".02", color=PLOT_GOLD, ha="center", va="top", fontsize=9)
     axes[0].text(0.08, axes[0].get_ylim()[1] * 0.94, ".08", color=PLOT_TEXT, ha="center", va="top", fontsize=9)
     axes[0].text(0.15, axes[0].get_ylim()[1] * 0.94, ".15", color=PLOT_OLIVE, ha="center", va="top", fontsize=9)
-    fig.suptitle("BAC Score Distribution for Adult and Youth RD-Eligible Crime Codes", y=0.995)
-    fig.text(0.5, 0.01, "Ages 18+; crime codes 1 and 3; values shown at the 0.001 BAC score level.", ha="center", color=PLOT_TEXT, fontsize=9)
+    fig.suptitle("BAC Score Distribution for Adult and Youth DUI-Related Crime Codes", y=0.995)
+    fig.text(0.5, 0.01, "Ages 18+; crime codes 1 and 3; all observed BAC values shown at the 0.001 score level.", ha="center", color=PLOT_TEXT, fontsize=9)
     fig.tight_layout(rect=(0, 0.03, 1, 0.98))
     fig.savefig(FIG_DIR / "bac_distribution_with_without_zero.svg", bbox_inches="tight")
     plt.close(fig)

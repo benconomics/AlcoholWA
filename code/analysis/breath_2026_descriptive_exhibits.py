@@ -81,7 +81,7 @@ def plot_bac_distribution(raw: pd.DataFrame) -> None:
     frame = raw.copy()
     frame["low_score"] = frame[["alcohol1", "alcohol2"]].min(axis=1, skipna=True)
     frame["low_bac"] = pd.to_numeric(frame["low_score"], errors="coerce") / 1000
-    frame = frame[frame["low_bac"].between(0, 0.30, inclusive="both")].copy()
+    frame = frame[frame["low_bac"].ge(0)].copy()
     frame["bac_bin"] = np.floor(frame["low_bac"] * 1000) / 1000
     binned = frame.groupby("bac_bin", as_index=False).size().rename(columns={"size": "tests"})
     binned.to_csv(TABLE_DIR / "bac_distribution.csv", index=False)
@@ -93,7 +93,7 @@ def plot_bac_distribution(raw: pd.DataFrame) -> None:
     ax.set_title("Breath-Test BAC Distribution")
     ax.set_xlabel("BAC")
     ax.set_ylabel("Tests")
-    ax.set_xlim(0, 0.30)
+    ax.set_xlim(0, binned["bac_bin"].max())
     clean_axes(ax)
     fig.tight_layout()
     fig.savefig(FIG_DIR / "bac_distribution.svg", bbox_inches="tight")

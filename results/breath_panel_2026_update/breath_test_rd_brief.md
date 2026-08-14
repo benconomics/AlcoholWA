@@ -8,7 +8,7 @@
 
 ## BAC Distribution and Sorting Check
 
-The first exhibit plots the lower recorded BAC for ages 18 and older in crime codes 1 and 3. The upper panel includes exact-zero readings; the lower panel removes them so the score distribution near the legal thresholds is visible. The figure does not show an isolated point mass at .02, .08, or .15, but it should be interpreted alongside the coding audit below.
+The first exhibit plots the lower recorded BAC for ages 18 and older in crime codes 1 and 3 across the full observed BAC range. The upper panel includes exact-zero readings; the lower panel removes them so the score distribution near the legal thresholds is visible. The figure does not show an isolated point mass at .02, .08, or .15, but it should be interpreted alongside the coding audit below.
 
 ![BAC distribution with and without zero](figures/bac_distribution_with_without_zero.svg)
 
@@ -37,6 +37,16 @@ Adults are age 21 and older with the adult DUI crime code. Youth are ages 18-20 
 ![Adult RD point estimates](figures/adult_threshold_rd_estimates_h0p05.svg)
 
 ![Youth RD point estimates](figures/youth_threshold_rd_estimates_h0p05.svg)
+
+## BAC and Four-Year Recidivism Scatterplots
+
+Each point is a 0.001-BAC cell; circle size is proportional to the number of index tests in the cell. These displays retain broader BAC ranges for visual context, whereas the tabled RD models use the stated +/-0.05 bandwidth around each threshold.
+
+![Adult BAC and repeat testing](figures/adult_threshold_recidivism.svg)
+
+![Adult BAC and repeat testing, 2009-2022](figures/adult_threshold_recidivism_2009_2022.svg)
+
+![Youth BAC and repeat testing](figures/youth_threshold_recidivism.svg)
 
 ## Adults: Four-Year Repeat Breath Test
 

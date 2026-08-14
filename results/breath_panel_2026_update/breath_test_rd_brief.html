@@ -51,7 +51,7 @@
     </section>
     <section aria-labelledby="distribution-heading">
       <h2 id="distribution-heading">BAC Distribution and Sorting Check</h2>
-      <p>The first exhibit plots the lower recorded BAC for ages 18 and older in crime codes 1 and 3. The upper panel includes exact-zero readings; the lower panel removes them so the score distribution near the legal thresholds is visible. The figure does not show an isolated point mass at .02, .08, or .15, but it should be read alongside the coding audit below.</p>
+      <p>The first exhibit plots the lower recorded BAC for ages 18 and older in crime codes 1 and 3 across the full observed BAC range. The upper panel includes exact-zero readings; the lower panel removes them so the score distribution near the legal thresholds is visible. The figure does not show an isolated point mass at .02, .08, or .15, but it should be read alongside the coding audit below.</p>
       <figure><img src="figures/bac_distribution_with_without_zero.svg" alt="BAC score distribution with exact zero readings included and excluded, marking the .02, .08, and .15 thresholds."><figcaption>BAC score distribution at the 0.001 BAC score level.</figcaption></figure>
     </section>
     <section aria-labelledby="tests-heading">
@@ -75,6 +75,13 @@
         <figure><img src="figures/adult_threshold_rd_estimates_h0p05.svg" alt="Adult BAC threshold regression discontinuity point estimates with 95 percent confidence intervals."><figcaption>Adults ages 21 and older.</figcaption></figure>
         <figure><img src="figures/youth_threshold_rd_estimates_h0p05.svg" alt="Youth BAC threshold regression discontinuity point estimates with 95 percent confidence intervals."><figcaption>Youth ages 18-20.</figcaption></figure>
       </div>
+    </section>
+    <section aria-labelledby="scatter-heading">
+      <h2 id="scatter-heading">BAC and Four-Year Recidivism Scatterplots</h2>
+      <p>Each point is a 0.001-BAC cell; circle size is proportional to the number of index tests in the cell. These displays retain broader BAC ranges for visual context, whereas the tabled RD models use the stated +/-0.05 bandwidth around each threshold.</p>
+      <figure><img src="figures/adult_threshold_recidivism.svg" alt="Adult BAC and four-year repeat breath testing scatterplots for the 1999-2008 and 1999-2022 cohorts."><figcaption>Adults ages 21 and older: 1999-2008 and 1999-2022 cohorts.</figcaption></figure>
+      <figure><img src="figures/adult_threshold_recidivism_2009_2022.svg" alt="Adult BAC and four-year repeat breath testing scatterplot for the 2009-2022 cohort."><figcaption>Adults ages 21 and older: 2009-2022 cohort.</figcaption></figure>
+      <figure><img src="figures/youth_threshold_recidivism.svg" alt="Youth BAC and four-year repeat breath testing scatterplots for the 1999-2008 and 1999-2022 cohorts."><figcaption>Youth ages 18-20: 1999-2008 and 1999-2022 cohorts.</figcaption></figure>
     </section>
     <section aria-labelledby="adult-heading">
       <h2 id="adult-heading">Adults: Four-Year Repeat Breath Test</h2>
