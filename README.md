@@ -90,15 +90,13 @@ and the four-year repeat indicator; it is local-only and excluded from GitHub.
   and brief from the Stata-produced table.
 - `code/analysis/estimate_age21_crash_rd_stata19.do`: Stata local-Poisson age-21
   crash-count models with robust delta-method percentage-jump estimates.
-- `results/breath_panel_2026_update/age21_crash_legal_access.md` and `.html`:
-  recorded-collision age-21 exhibits and threshold estimates by period.
 - `code/analysis/breath_2026_descriptive_exhibits.py`: lightweight rerun script
   for aggregate exhibits from the cached de-duplicated raw parquet.
 - `results/breath_panel_2026_update/tables/`: aggregate CSV tables.
 - `results/breath_panel_2026_update/figures/`: SVG figures.
 - `results/breath_panel_2026_update/washington_breath_test_trends.md` and
   `.html`: short exhibit brief covering aggregate trends, age 21, and the
-  pre/post-July-2014 comparison.
+  pre/post-July-2014 comparison for all tests and recorded-collision tests.
 - `results/breath_panel_2026_update/breath_test_rd_brief.md` and `.html`:
   breath-test figures and four-year recidivism RD estimates.
 - `code/analysis/build_breath_data_quality_audit.py`: regenerates the BAC

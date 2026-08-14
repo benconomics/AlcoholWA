@@ -5,6 +5,7 @@
 - **Testing volume rose through the late 1990s, stayed high through the 2000s, and then declined.** The 2018-2019 overlap has been removed before constructing these series.
 - **Breath-test observations rise sharply at age 21.** The pattern is visible at daily, weekly, and 28-day resolutions in the two years on either side of the 21st birthday.
 - **The age-21 discontinuity is smaller after July 2014, when legal adult cannabis sales began in Washington.** A local-linear comparison within 90 days of age 21 estimates a 44.5% increase before the policy break and a 36.4% increase after it. This is preliminary descriptive evidence consistent with substitution, not a causal estimate.
+- **Recorded-collision breath-test observations show the same directional pattern.** A local Poisson count model estimates a 63.5% age-21 jump before July 2014 and a 34.4% jump afterward.
 
 ## Aggregate Breath-Test Patterns
 
@@ -63,6 +64,33 @@ The pre-period runs from January 1999 through June 2014. The post-period begins 
 | 1999-June 2014 | July 2014-present |
 | --- | --- |
 | ![Pre-period 28-day age-21 observations](figures/tests_relative_to_turning_21_1999_to_june_2014_28day.svg) | ![Post-period 28-day age-21 observations](figures/tests_relative_to_turning_21_july_2014_to_present_28day.svg) |
+
+## Recorded-Collision Pattern Before and After Legal Cannabis Sales
+
+This outcome is restricted to de-duplicated breath-test observations marked as involving a recorded collision. The pre-period begins in 1998 to use all available pre-policy crash data. The estimates use a local Poisson count model within 90 days of age 21, with separate linear trends on either side; percentage jumps are `100*(exp(beta)-1)` with robust delta-method standard errors.
+
+| Period | Percentage jump at 21 | Relative-day cells |
+| --- | --- | --- |
+| 1998-June 2014 | +63.5% (robust SE 16.5); p<0.001 | 181 |
+| July 2014-present | +34.4% (robust SE 18.6); p=0.032 | 181 |
+
+### Daily collision observations
+
+| 1998-June 2014 | July 2014-present |
+| --- | --- |
+| ![Pre-period daily collision observations](figures/crashes_relative_to_turning_21_1998_to_june_2014_daily.svg) | ![Post-period daily collision observations](figures/crashes_relative_to_turning_21_july_2014_to_present_daily.svg) |
+
+### 7-day collision bins
+
+| 1998-June 2014 | July 2014-present |
+| --- | --- |
+| ![Pre-period weekly collision observations](figures/crashes_relative_to_turning_21_1998_to_june_2014_weekly.svg) | ![Post-period weekly collision observations](figures/crashes_relative_to_turning_21_july_2014_to_present_weekly.svg) |
+
+### 28-day collision bins
+
+| 1998-June 2014 | July 2014-present |
+| --- | --- |
+| ![Pre-period 28-day collision observations](figures/crashes_relative_to_turning_21_1998_to_june_2014_28day.svg) | ![Post-period 28-day collision observations](figures/crashes_relative_to_turning_21_july_2014_to_present_28day.svg) |
 
 ## Interpretation and Next Steps
 

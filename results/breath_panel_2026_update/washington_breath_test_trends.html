@@ -52,6 +52,9 @@
     .pair figure { margin: 0; }
     .pair figcaption { font-weight: 700; color: var(--ink); }
     .note { color: var(--muted); font-size: 0.94rem; }
+    table { border-collapse: collapse; width: 100%; margin: 18px 0 28px; }
+    th, td { border-bottom: 1px solid var(--rule); padding: 11px 10px; text-align: left; vertical-align: top; }
+    thead th { color: var(--accent); border-bottom: 2px solid var(--accent); }
     footer { border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; margin-top: 42px; padding-top: 16px; }
     @media (max-width: 760px) {
       main { padding: 28px 18px 48px; }
@@ -73,6 +76,7 @@
         <li><strong>Testing volume rose through the late 1990s, stayed high through the 2000s, and then declined.</strong> The 2018-2019 overlap has been removed before constructing these series.</li>
         <li><strong>Breath-test observations rise sharply at age 21.</strong> The pattern appears at daily, weekly, and 28-day resolutions in the two years around the 21st birthday.</li>
         <li><strong>The age-21 discontinuity is smaller after July 2014.</strong> A local-linear comparison within 90 days of age 21 estimates a 44.5% increase before the policy break and a 36.4% increase afterward. This is preliminary descriptive evidence consistent with substitution, not a causal estimate.</li>
+        <li><strong>Recorded-collision breath-test observations show the same directional pattern.</strong> A local Poisson count model estimates a 63.5% age-21 jump before July 2014 and a 34.4% jump afterward.</li>
       </ul>
     </section>
 
@@ -189,6 +193,36 @@
         </figure>
       </div>
       <p class="note">The difference in age-21 discontinuities is consistent with some substitution away from alcohol when legal cannabis access begins at the same threshold. Because these are breath-test observations, the comparison remains preliminary and should be checked with placebo age cutoffs, broader national policy variation, and outcomes outside breath-test enforcement.</p>
+    </section>
+
+    <section aria-labelledby="crash-heading">
+      <h2 id="crash-heading">Recorded-Collision Pattern Before and After Legal Cannabis Sales</h2>
+      <p>This outcome is restricted to de-duplicated breath-test observations marked as involving a recorded collision. The pre-period begins in 1998 to use all available pre-policy crash data. The estimates use a local Poisson count model within 90 days of age 21, with separate linear trends on either side; percentage jumps are <code>100*(exp(beta)-1)</code> with robust delta-method standard errors.</p>
+      <table>
+        <thead><tr><th>Period</th><th>Percentage jump at 21</th><th>Relative-day cells</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">1998-June 2014</th><td><strong>+63.5%</strong> (robust SE 16.5); p&lt;0.001</td><td>181</td></tr>
+          <tr><th scope="row">July 2014-present</th><td><strong>+34.4%</strong> (robust SE 18.6); p=0.032</td><td>181</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Daily collision observations</h3>
+      <div class="pair">
+        <figure><img src="figures/crashes_relative_to_turning_21_1998_to_june_2014_daily.svg" alt="Daily recorded-collision breath tests relative to age 21, 1998 through June 2014."><figcaption>1998-June 2014.</figcaption></figure>
+        <figure><img src="figures/crashes_relative_to_turning_21_july_2014_to_present_daily.svg" alt="Daily recorded-collision breath tests relative to age 21, July 2014 through present."><figcaption>July 2014-present.</figcaption></figure>
+      </div>
+
+      <h3>7-day collision bins</h3>
+      <div class="pair">
+        <figure><img src="figures/crashes_relative_to_turning_21_1998_to_june_2014_weekly.svg" alt="Weekly recorded-collision breath tests relative to age 21, 1998 through June 2014."><figcaption>1998-June 2014.</figcaption></figure>
+        <figure><img src="figures/crashes_relative_to_turning_21_july_2014_to_present_weekly.svg" alt="Weekly recorded-collision breath tests relative to age 21, July 2014 through present."><figcaption>July 2014-present.</figcaption></figure>
+      </div>
+
+      <h3>28-day collision bins</h3>
+      <div class="pair">
+        <figure><img src="figures/crashes_relative_to_turning_21_1998_to_june_2014_28day.svg" alt="28-day recorded-collision breath tests relative to age 21, 1998 through June 2014."><figcaption>1998-June 2014.</figcaption></figure>
+        <figure><img src="figures/crashes_relative_to_turning_21_july_2014_to_present_28day.svg" alt="28-day recorded-collision breath tests relative to age 21, July 2014 through present."><figcaption>July 2014-present.</figcaption></figure>
+      </div>
     </section>
 
     <footer>Source: Washington breath-test panel update through 2026. Figures are based on de-duplicated observations.</footer>
