@@ -16,8 +16,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "2026" / "code" / "analysis"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "code" / "analysis"))
 
 from rebuild_breath_bac_panel import BAD_SUBJECT_NAMES  # noqa: E402
 
@@ -25,7 +25,7 @@ from rebuild_breath_bac_panel import BAD_SUBJECT_NAMES  # noqa: E402
 OLD_RAW_PATH = ROOT / "breath_panel_2019_rebuild" / "standardized_breath_raw_1995_2019.parquet"
 NEW_XLSX_PATH = ROOT / "2026" / "breathtests" / "R006001-040926_DB_REDACTED.xlsx"
 
-OUT_DIR = ROOT / "breath_panel_2026_update"
+OUT_DIR = ROOT / "results" / "breath_panel_2026_update"
 TABLE_DIR = OUT_DIR / "tables"
 FIG_DIR = OUT_DIR / "figures"
 PRIVATE_DIR = OUT_DIR / "private"

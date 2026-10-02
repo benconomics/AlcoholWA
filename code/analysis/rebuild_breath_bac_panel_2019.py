@@ -15,7 +15,7 @@ from rebuild_breath_bac_panel import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 DATAMASTER_PATH = ROOT / "2019" / "R002834-030519_Datamaster_DB_1995-2019_-_Redacted.xlsx"
 DRAEGER_PATH = ROOT / "2019" / "R002834-030519_Draeger_DB_1995-2019_-_Redacted.xlsx"
 OUT_DIR = ROOT / "breath_panel_2019_rebuild"

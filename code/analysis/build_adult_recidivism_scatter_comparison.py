@@ -10,8 +10,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[3]
-OUT_DIR = ROOT / "breath_panel_2026_update"
+ROOT = Path(__file__).resolve().parents[2]
+OUT_DIR = ROOT / "results" / "breath_panel_2026_update"
 TABLE_PATH = OUT_DIR / "tables" / "threshold_recidivism_binned.csv"
 FIG_DIR = OUT_DIR / "figures"
 

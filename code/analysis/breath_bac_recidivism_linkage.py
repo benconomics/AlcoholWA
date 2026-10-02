@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 BREATH_PATH = ROOT / "Older" / "dui_analysis.dta"
 COURT_PATH = ROOT / "Older" / "punishments_offenders.dta"
 OUT_DIR = ROOT / "breath_bac_recidivism_linkage"

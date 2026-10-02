@@ -11,8 +11,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "2026" / "code" / "analysis"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "code" / "analysis"))
 
 from rebuild_breath_bac_panel_2026 import (  # noqa: E402
     FIG_DIR,

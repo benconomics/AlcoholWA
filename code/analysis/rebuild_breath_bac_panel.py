@@ -28,7 +28,7 @@ from breath_bac_recidivism_linkage import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 RAW_BREATH_CSV_PATH = ROOT / "Older" / "breath_test_10_2016.csv"
 LEGACY_ANALYSIS_PATH = ROOT / "Older" / "dui_analysis.dta"
 OUT_DIR = ROOT / "breath_bac_recidivism_linkage"
