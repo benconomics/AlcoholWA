@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from html import escape
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from project_paths import breath_update_dir
 
-ROOT = Path(__file__).resolve().parents[3]
-OUT_DIR = ROOT / "breath_panel_2026_update"
+OUT_DIR = breath_update_dir()
 TABLE_PATH = OUT_DIR / "tables" / "threshold_recidivism_rd.csv"
 OUT_MD = OUT_DIR / "breath_test_rd_brief.md"
 OUT_HTML = OUT_DIR / "breath_test_rd_brief.html"

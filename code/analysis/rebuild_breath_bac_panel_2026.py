@@ -16,16 +16,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "2026" / "code" / "analysis"))
+ANALYSIS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(ANALYSIS_DIR))
 
+from project_paths import breath_update_dir, data_root  # noqa: E402
 from rebuild_breath_bac_panel import BAD_SUBJECT_NAMES  # noqa: E402
 
 
-OLD_RAW_PATH = ROOT / "breath_panel_2019_rebuild" / "standardized_breath_raw_1995_2019.parquet"
-NEW_XLSX_PATH = ROOT / "2026" / "breathtests" / "R006001-040926_DB_REDACTED.xlsx"
+DATA_ROOT = data_root()
+OLD_RAW_PATH = DATA_ROOT / "breath_panel_2019_rebuild" / "standardized_breath_raw_1995_2019.parquet"
+NEW_XLSX_PATH = DATA_ROOT / "2026" / "breathtests" / "R006001-040926_DB_REDACTED.xlsx"
 
-OUT_DIR = ROOT / "breath_panel_2026_update"
+OUT_DIR = breath_update_dir()
 TABLE_DIR = OUT_DIR / "tables"
 FIG_DIR = OUT_DIR / "figures"
 PRIVATE_DIR = OUT_DIR / "private"
@@ -1197,7 +1199,7 @@ def main(raw_only: bool = False, linkage_audit_only: bool = False, use_cached_ra
     plot_threshold_figures(binned)
 
     print(f"Wrote 2026 breath update package to {OUT_DIR}")
-    print(f"Run Stata estimation with {ROOT / '2026' / 'code' / 'analysis' / 'estimate_breath_threshold_rd_stata19.do'}")
+    print(f"Run Stata estimation with {ANALYSIS_DIR / 'estimate_breath_threshold_rd_stata19.do'}")
 
 
 if __name__ == "__main__":
