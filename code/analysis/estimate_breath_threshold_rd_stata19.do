@@ -6,7 +6,7 @@ set more off
 * Set this root once if the project is stored elsewhere.
 args root
 if `"`root'"' == "" local root "E:\University of Oregon Dropbox\Ben Hansen\Alcohol WA"
-local out `"`root'\breath_panel_2026_update"'
+local out `"`root'\results\breath_panel_2026_update"'
 local input `"`out'\stata_inputs\breath_panel_rd_input.dta"'
 local tables `"`out'\tables"'
 

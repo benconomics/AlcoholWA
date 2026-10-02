@@ -6,7 +6,7 @@ set more off
 * count files and retains zero-count relative-day cells before this estimation.
 args root
 if `"`root'"' == "" local root "E:\University of Oregon Dropbox\Ben Hansen\Alcohol WA"
-local out `"`root'\breath_panel_2026_update"'
+local out `"`root'\results\breath_panel_2026_update"'
 local tables `"`out'\tables"'
 
 tempfile results
